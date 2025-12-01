@@ -2,60 +2,66 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-	--foreground-rgb: 255, 255, 255;
-	--background-start-rgb: 15, 23, 42;
-	--background-end-rgb: 88, 28, 135;
-}
-
-body {
-	color: rgb(var(--foreground-rgb));
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-	width: 8px;
-}
-
-::-webkit-scrollbar-track {
-	background: rgba(255, 255, 255, 0.1);
-}
-
-::-webkit-scrollbar-thumb {
-	background: rgba(139, 92, 246, 0.5);
-	border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-	background: rgba(139, 92, 246, 0.7);
-}
-
-/* Animations */
-@keyframes fadeIn {
-	from {
-		opacity: 0;
-		transform: translateY(10px);
+@layer base {
+	:root {
+		--background: 15 15 35;
+		--foreground: 255 255 255;
 	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
+
+	* {
+		@apply border-white/10;
+	}
+
+	html {
+		@apply scroll-smooth;
+	}
+
+	body {
+		@apply bg-background text-white antialiased;
+		font-feature-settings: "rlig" 1, "calt" 1;
+	}
+
+	::-webkit-scrollbar {
+		@apply w-2 h-2;
+	}
+
+	::-webkit-scrollbar-track {
+		@apply bg-white/5 rounded;
+	}
+
+	::-webkit-scrollbar-thumb {
+		@apply bg-violet-500/50 rounded hover:bg-violet-500/70;
+	}
+
+	::selection {
+		@apply bg-violet-500/40 text-white;
 	}
 }
 
-.animate-fadeIn {
-	animation: fadeIn 0.5s ease-out;
+@layer components {
+	.container-custom {
+		@apply max-w-6xl mx-auto px-4 sm:px-6 lg:px-8;
+	}
+
+	.gradient-text {
+		@apply bg-gradient-to-r from-violet-400 via-purple-400 to-violet-400 bg-clip-text text-transparent;
+	}
+
+	.glass {
+		@apply bg-white/5 backdrop-blur-xl border border-white/10;
+	}
+
+	.section-padding {
+		@apply py-16 md:py-24;
+	}
 }
 
-@keyframes pulse-glow {
-	0%,
-	100% {
-		box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+@layer utilities {
+	.pb-safe {
+		padding-bottom: calc(6rem + env(safe-area-inset-bottom));
 	}
-	50% {
-		box-shadow: 0 0 40px rgba(139, 92, 246, 0.6);
-	}
-}
 
-.pulse-glow {
-	animation: pulse-glow 2s infinite;
+	.pt-safe {
+		padding-top: calc(4.5rem + env(safe-area-inset-top));
+	}
 }
