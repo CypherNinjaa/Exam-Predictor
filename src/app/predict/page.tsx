@@ -1,7 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Navbar } from "@/components/Navbar";
+import { Navbar, BottomNav, MobileHeader } from "@/components/layout";
+import { Card } from "@/components/ui";
+import {
+	Sparkles,
+	Download,
+	Target,
+	BookOpen,
+	FileText,
+	BarChart3,
+	Award,
+	ChevronDown,
+	ChevronUp,
+} from "lucide-react";
 
 interface Subject {
 	id: string;
@@ -60,11 +72,15 @@ export default function PredictPage() {
 	};
 
 	return (
-		<div className="min-h-screen">
+		<div className="min-h-screen bg-background">
 			<Navbar />
+			<MobileHeader title="Predictions" />
 
-			<main className="container mx-auto px-4 py-8">
-				<h1 className="text-3xl font-bold mb-8">🔮 Generate Predictions</h1>
+			<main className="container mx-auto px-4 py-8 pt-20 md:pt-8 pb-24 md:pb-8">
+				<h1 className="text-3xl font-bold mb-8 hidden md:flex items-center gap-3">
+					<Sparkles className="w-8 h-8 text-violet-500" />
+					Generate Predictions
+				</h1>
 
 				<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 					{/* Configuration Panel */}
@@ -140,20 +156,23 @@ export default function PredictPage() {
 								<button
 									onClick={generatePredictions}
 									disabled={!config.subjectId || loading}
-									className={`w-full py-3 rounded-xl font-semibold transition-all mt-4
+									className={`w-full py-3 rounded-xl font-semibold transition-all mt-4 flex items-center justify-center gap-2
                     ${
 											!config.subjectId || loading
 												? "bg-gray-600 cursor-not-allowed"
-												: "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+												: "bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
 										}`}
 								>
 									{loading ? (
-										<span className="flex items-center justify-center gap-2">
+										<>
 											<div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
 											Generating...
-										</span>
+										</>
 									) : (
-										"🔮 Generate Predictions"
+										<>
+											<Sparkles className="w-5 h-5" />
+											Generate Predictions
+										</>
 									)}
 								</button>
 							</div>
@@ -184,8 +203,8 @@ export default function PredictPage() {
 					{/* Predictions Results */}
 					<div className="lg:col-span-2">
 						{predictions.length === 0 && !loading ? (
-							<div className="bg-white/10 backdrop-blur-lg rounded-xl p-12 border border-white/10 text-center">
-								<span className="text-6xl">🎯</span>
+							<div className="bg-white/5 backdrop-blur-lg rounded-xl p-12 border border-white/10 text-center">
+								<Target className="w-16 h-16 text-violet-500 mx-auto" />
 								<h3 className="text-xl font-semibold mt-4">
 									No Predictions Yet
 								</h3>
@@ -210,8 +229,9 @@ export default function PredictPage() {
 									<h2 className="text-xl font-semibold">
 										Predicted Questions ({predictions.length})
 									</h2>
-									<button className="text-sm bg-white/10 px-4 py-2 rounded-lg hover:bg-white/20 transition-colors">
-										📥 Export PDF
+									<button className="text-sm bg-white/10 px-4 py-2 rounded-lg hover:bg-white/20 transition-colors flex items-center gap-2">
+										<Download className="w-4 h-4" />
+										Export PDF
 									</button>
 								</div>
 
@@ -227,6 +247,7 @@ export default function PredictPage() {
 					</div>
 				</div>
 			</main>
+			<BottomNav />
 		</div>
 	);
 }
@@ -279,25 +300,33 @@ function PredictionCard({
 					</div>
 
 					<div className="flex flex-wrap gap-2 mt-3">
-						<span className="px-2 py-1 bg-purple-500/30 rounded text-xs">
-							📚 {prediction.module}
+						<span className="px-2 py-1 bg-violet-500/30 rounded text-xs flex items-center gap-1">
+							<BookOpen className="w-3 h-3" /> {prediction.module}
 						</span>
-						<span className="px-2 py-1 bg-blue-500/30 rounded text-xs">
-							📝 {prediction.topic}
+						<span className="px-2 py-1 bg-blue-500/30 rounded text-xs flex items-center gap-1">
+							<FileText className="w-3 h-3" /> {prediction.topic}
 						</span>
-						<span className="px-2 py-1 bg-pink-500/30 rounded text-xs">
-							📊 {prediction.difficulty}
+						<span className="px-2 py-1 bg-pink-500/30 rounded text-xs flex items-center gap-1">
+							<BarChart3 className="w-3 h-3" /> {prediction.difficulty}
 						</span>
-						<span className="px-2 py-1 bg-green-500/30 rounded text-xs">
-							🎯 {prediction.marks} marks
+						<span className="px-2 py-1 bg-green-500/30 rounded text-xs flex items-center gap-1">
+							<Award className="w-3 h-3" /> {prediction.marks} marks
 						</span>
 					</div>
 
 					<button
 						onClick={() => setExpanded(!expanded)}
-						className="text-purple-400 text-sm mt-3 hover:text-purple-300"
+						className="text-violet-400 text-sm mt-3 hover:text-violet-300 flex items-center gap-1"
 					>
-						{expanded ? "▲ Hide reasoning" : "▼ Show reasoning"}
+						{expanded ? (
+							<>
+								<ChevronUp className="w-4 h-4" /> Hide reasoning
+							</>
+						) : (
+							<>
+								<ChevronDown className="w-4 h-4" /> Show reasoning
+							</>
+						)}
 					</button>
 
 					{expanded && (

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Navbar } from "@/components/Navbar";
+import { Navbar, BottomNav, MobileHeader } from "@/components/layout";
+import { Button, Card } from "@/components/ui";
+import { Upload, FileText, BookOpen, FileSpreadsheet } from "lucide-react";
 
 type UploadType = "exam" | "syllabus" | "notes";
 
@@ -77,11 +79,15 @@ export default function UploadPage() {
 	};
 
 	return (
-		<div className="min-h-screen">
+		<div className="min-h-screen bg-background">
 			<Navbar />
+			<MobileHeader title="Upload Data" />
 
-			<main className="container mx-auto px-4 py-8 max-w-2xl">
-				<h1 className="text-3xl font-bold mb-8">📤 Upload Data</h1>
+			<main className="container mx-auto px-4 py-8 max-w-2xl pt-20 md:pt-8 pb-24 md:pb-8">
+				<h1 className="text-3xl font-bold mb-8 hidden md:flex items-center gap-3">
+					<Upload className="w-8 h-8 text-violet-500" />
+					Upload Data
+				</h1>
 
 				{/* Upload Type Selector */}
 				<div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/10 mb-6">
@@ -90,19 +96,19 @@ export default function UploadPage() {
 						<TypeButton
 							active={uploadType === "exam"}
 							onClick={() => setUploadType("exam")}
-							icon="📝"
+							icon={<FileText className="w-6 h-6" />}
 							label="Exam Paper"
 						/>
 						<TypeButton
 							active={uploadType === "syllabus"}
 							onClick={() => setUploadType("syllabus")}
-							icon="📘"
+							icon={<BookOpen className="w-6 h-6" />}
 							label="Syllabus"
 						/>
 						<TypeButton
 							active={uploadType === "notes"}
 							onClick={() => setUploadType("notes")}
-							icon="📒"
+							icon={<FileSpreadsheet className="w-6 h-6" />}
 							label="Lecture Notes"
 						/>
 					</div>
@@ -221,16 +227,16 @@ export default function UploadPage() {
 						/>
 
 						{file ? (
-							<div>
-								<span className="text-4xl">📄</span>
+							<div className="flex flex-col items-center">
+								<FileText className="w-12 h-12 text-violet-500" />
 								<p className="mt-2 font-medium">{file.name}</p>
 								<p className="text-sm text-gray-400">
 									{(file.size / 1024 / 1024).toFixed(2)} MB
 								</p>
 							</div>
 						) : (
-							<div>
-								<span className="text-4xl">📁</span>
+							<div className="flex flex-col items-center">
+								<Upload className="w-12 h-12 text-gray-400" />
 								<p className="mt-2 font-medium">Click to select PDF file</p>
 								<p className="text-sm text-gray-400">or drag and drop</p>
 							</div>
@@ -248,7 +254,7 @@ export default function UploadPage() {
 						}`}
 					>
 						<p className={result.success ? "text-green-400" : "text-red-400"}>
-							{result.success ? "✅" : "❌"} {result.message}
+							{result.message}
 						</p>
 					</div>
 				)}
@@ -280,6 +286,7 @@ export default function UploadPage() {
 					)}
 				</button>
 			</main>
+			<BottomNav />
 		</div>
 	);
 }
@@ -292,21 +299,21 @@ function TypeButton({
 }: {
 	active: boolean;
 	onClick: () => void;
-	icon: string;
+	icon: React.ReactNode;
 	label: string;
 }) {
 	return (
 		<button
 			onClick={onClick}
-			className={`p-4 rounded-lg text-center transition-all
+			className={`p-4 rounded-xl text-center transition-all flex flex-col items-center gap-2
         ${
 					active
-						? "bg-purple-600 border-2 border-purple-400"
+						? "bg-violet-600 border-2 border-violet-400"
 						: "bg-white/5 border-2 border-transparent hover:border-white/20"
 				}`}
 		>
-			<span className="text-2xl">{icon}</span>
-			<p className="text-sm mt-1">{label}</p>
+			<span className={active ? "text-white" : "text-gray-400"}>{icon}</span>
+			<p className="text-sm">{label}</p>
 		</button>
 	);
 }
