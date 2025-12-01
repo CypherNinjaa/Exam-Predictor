@@ -12,9 +12,11 @@ import {
 	Shield,
 	LogIn,
 	BookText,
+	Search,
 } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { useSearch } from "@/components/SearchProvider";
 
 const navItems = [
 	{ href: "/", label: "Home", icon: Home },
@@ -28,6 +30,7 @@ export function Navbar() {
 	const pathname = usePathname();
 	const { user, isLoaded } = useUser();
 	const isAdmin = (user?.publicMetadata as { role?: string })?.role === "admin";
+	const { openSearch } = useSearch();
 
 	return (
 		<header className="fixed top-0 left-0 right-0 z-50 hidden md:block">
@@ -91,6 +94,18 @@ export function Navbar() {
 
 						{/* Auth */}
 						<div className="flex items-center gap-3">
+							{/* Search Button */}
+							<button
+								onClick={openSearch}
+								className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+							>
+								<Search className="w-4 h-4" />
+								<span className="hidden lg:inline">Search</span>
+								<kbd className="hidden lg:inline-block px-2 py-0.5 text-xs bg-white/10 border border-white/20 rounded">
+									{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}
+								</kbd>
+							</button>
+
 							<SignedOut>
 								<SignInButton mode="modal">
 									<Button size="sm" leftIcon={<LogIn className="w-4 h-4" />}>

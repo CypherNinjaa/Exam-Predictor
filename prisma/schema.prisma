@@ -384,3 +384,92 @@ model ProcessingLog {
   processedAt DateTime?
   createdAt   DateTime  @default(now())
 }
+
+// ==================== USER MANAGEMENT ====================
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+model User {
+  id              String         @id // Clerk user ID
+  email           String         @unique
+  name            String?
+  role            UserRole       @default(USER)
+  isBanned        Boolean        @default(false)
+  bannedReason    String?
+  bannedAt        DateTime?
+  lastActiveAt    DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  // Relations
+  activityLogs    ActivityLog[]
+  predictionLogs  PredictionLog[]
+  downloadLogs    DownloadLog[]
+  
+  @@index([role])
+  @@index([isBanned])
+  @@index([lastActiveAt])
+}
+
+enum ActivityType {
+  LOGIN
+  LOGOUT
+  PREDICTION_GENERATED
+  NOTE_DOWNLOADED
+  NOTE_UPLOADED
+  QUESTION_UPLOADED
+  SYLLABUS_UPLOADED
+  USER_PROMOTED
+  USER_BANNED
+  USER_UNBANNED
+}
+
+model ActivityLog {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityType ActivityType
+  description String?
+  metadata    Json?        // Additional data like subjectId, fileId, etc.
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime     @default(now())
+  
+  @@index([userId])
+  @@index([activityType])
+  @@index([createdAt])
+}
+
+// ==================== ANALYTICS TRACKING ====================
+
+model PredictionLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  subjectId       String
+  examType        ExamType
+  modelUsed       String   // "gemini-2.5-pro", "gemini-3-pro-preview", etc.
+  confidenceScore Float
+  questionsCount  Int
+  processingTime  Int      // in seconds
+  createdAt       DateTime @default(now())
+  
+  @@index([subjectId])
+  @@index([examType])
+  @@index([createdAt])
+}
+
+model DownloadLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  noteId    String
+  createdAt DateTime @default(now())
+  
+  @@index([noteId])
+  @@index([createdAt])
+}
