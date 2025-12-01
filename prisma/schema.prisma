@@ -1,0 +1,331 @@
+// ===========================================
+// PRISMA SCHEMA - AI EXAM PREDICTOR
+// Amity University Patna Data Structure
+// ===========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== CORE ENTITIES ====================
+
+model College {
+  id        String   @id @default(cuid())
+  name      String   @unique // "Amity University Patna"
+  code      String   @unique // "AUP"
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  years    AcademicYear[]
+  subjects Subject[]
+}
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  year      Int // 2024, 2025
+  collegeId String
+  createdAt DateTime @default(now())
+
+  // Relations
+  college   College    @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  semesters Semester[]
+
+  @@unique([collegeId, year])
+}
+
+model Semester {
+  id             String    @id @default(cuid())
+  number         Int // 1-8
+  academicYearId String
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime  @default(now())
+
+  // Relations
+  academicYear  AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  subjectOffers SubjectOffering[]
+  exams         Exam[]
+
+  @@unique([academicYearId, number])
+}
+
+model Subject {
+  id        String   @id @default(cuid())
+  code      String // "CSE301"
+  name      String // "Computer Networks"
+  credits   Int      @default(3)
+  collegeId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  college   College           @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  offerings SubjectOffering[]
+  syllabi   Syllabus[]
+
+  @@unique([collegeId, code])
+}
+
+model SubjectOffering {
+  id         String   @id @default(cuid())
+  subjectId  String
+  semesterId String
+  createdAt  DateTime @default(now())
+
+  // Relations
+  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  semester Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  exams    Exam[]
+
+  @@unique([subjectId, semesterId])
+}
+
+// ==================== SYLLABUS ====================
+
+model Syllabus {
+  id          String   @id @default(cuid())
+  subjectId   String
+  version     String   @default("1.0") // Syllabus can change yearly
+  year        Int // Which year this syllabus is for (2024, 2025)
+  semester    Int? // Which semester (1-8)
+  description String?
+  pdfUrl      String? // Link to official syllabus PDF
+  totalHours  Int? // Total teaching hours
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  subject    Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  modules    Module[]
+  books      Book[] // Textbooks and references
+  evaluation EvaluationScheme?
+
+  @@unique([subjectId, year])
+}
+
+model Module {
+  id          String   @id @default(cuid())
+  number      Int // Module 1, 2, 3...
+  name        String // "Basics of HTML"
+  description String?
+  syllabusId  String
+  weightage   Float? // Percentage of syllabus (e.g., 20.0)
+  hours       Int? // Teaching hours for this module (e.g., 6)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  syllabus  Syllabus   @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+  topics    Topic[]
+  questions Question[]
+
+  @@unique([syllabusId, number])
+}
+
+model Topic {
+  id             String    @id @default(cuid())
+  name           String // "Introduction to HTML: syntax, elements, document structure"
+  description    String?
+  moduleId       String
+  orderIndex     Int       @default(0) // Order within module
+  lastAskedDate  DateTime?
+  timesAsked     Int       @default(0)
+  freshnessScore Float     @default(0.5)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  module    Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  subTopics SubTopic[]
+  questions Question[]
+}
+
+model SubTopic {
+  id        String   @id @default(cuid())
+  name      String // "Layer Functions"
+  topicId   String
+  createdAt DateTime @default(now())
+
+  // Relations
+  topic     Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  questions Question[]
+}
+
+// ==================== BOOKS & REFERENCES ====================
+
+enum BookType {
+  TEXTBOOK
+  REFERENCE
+}
+
+model Book {
+  id         String   @id @default(cuid())
+  title      String // "Mastering HTML, CSS & JavaScript"
+  author     String? // "Laura Lemay"
+  publisher  String? // "BPB Publications"
+  year       Int? // 2016
+  edition    String? // "Fifth Edition"
+  bookType   BookType @default(TEXTBOOK)
+  syllabusId String
+  createdAt  DateTime @default(now())
+
+  // Relations
+  syllabus Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+}
+
+// ==================== EVALUATION SCHEME ====================
+
+model EvaluationScheme {
+  id              String   @id @default(cuid())
+  syllabusId      String   @unique
+  midterm1        Float? // Percentage (e.g., 15.0)
+  midterm2        Float? // Percentage (e.g., 15.0)
+  endterm         Float? // Percentage (e.g., 60.0)
+  assignments     Float? // Percentage for assignments
+  practicals      Float? // Percentage for lab/practicals
+  attendance      Float? // Percentage for attendance
+  otherComponents Json? // Any other evaluation components
+  createdAt       DateTime @default(now())
+
+  // Relations
+  syllabus Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
+}
+
+// ==================== EXAMS & QUESTIONS ====================
+
+enum ExamType {
+  MIDTERM_1 // First internal exam
+  MIDTERM_2 // Second internal exam
+  END_TERM // Final semester exam
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum BloomsTaxonomy {
+  REMEMBER
+  UNDERSTAND
+  APPLY
+  ANALYZE
+  EVALUATE
+  CREATE
+}
+
+model Exam {
+  id                String    @id @default(cuid())
+  examType          ExamType
+  semesterId        String
+  subjectOfferingId String
+  examDate          DateTime?
+  totalMarks        Int       @default(60)
+  duration          Int       @default(180) // minutes
+  pdfUrl            String? // Original exam paper
+  isProcessed       Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  semester        Semester        @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  subjectOffering SubjectOffering @relation(fields: [subjectOfferingId], references: [id], onDelete: Cascade)
+  questions       Question[]
+
+  @@unique([subjectOfferingId, examType])
+}
+
+model Question {
+  id             String         @id @default(cuid())
+  questionNumber String // "Q1a", "Q4b"
+  text           String // Full question text
+  marks          Int
+  examId         String
+  moduleId       String?
+  topicId        String?
+  subTopicId     String?
+  difficulty     Difficulty     @default(MEDIUM)
+  bloomsLevel    BloomsTaxonomy @default(UNDERSTAND)
+  keywords       String[] // ["OSI", "layers", "protocol"]
+  vectorId       String? // ChromaDB vector reference
+  imageUrl       String? // If question has diagrams
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // Relations
+  exam        Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
+  module      Module?              @relation(fields: [moduleId], references: [id])
+  topic       Topic?               @relation(fields: [topicId], references: [id])
+  subTopic    SubTopic?            @relation(fields: [subTopicId], references: [id])
+  predictions PredictionQuestion[]
+}
+
+// ==================== PREDICTIONS ====================
+
+model Prediction {
+  id             String   @id @default(cuid())
+  targetExamType ExamType
+  targetYear     Int
+  targetSemester Int
+  subjectCode    String
+  generatedAt    DateTime @default(now())
+  confidence     Float // Overall prediction confidence
+  modelVersion   String   @default("1.0")
+  isValidated    Boolean  @default(false)
+  accuracyScore  Float? // Filled after exam happens
+
+  // Relations
+  questions PredictionQuestion[]
+}
+
+model PredictionQuestion {
+  id                String   @id @default(cuid())
+  predictionId      String
+  generatedText     String // AI-generated question
+  probability       Float // 0.0 - 1.0
+  reasoning         String[] // Why this was predicted
+  suggestedMarks    Int
+  targetModule      String?
+  targetTopic       String?
+  wasAccurate       Boolean? // Filled after validation
+  matchedQuestionId String? // Actual question it matched
+  createdAt         DateTime @default(now())
+
+  // Relations
+  prediction      Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  matchedQuestion Question?  @relation(fields: [matchedQuestionId], references: [id])
+}
+
+// ==================== LECTURE NOTES (Alpha Signal) ====================
+
+model LectureNote {
+  id          String   @id @default(cuid())
+  subjectCode String
+  semester    Int
+  year        Int
+  content     String // Extracted text from lecture
+  sourceType  String // "pdf", "ppt", "transcript"
+  sourceUrl   String?
+  keywords    Json // { "keyword": frequency }
+  createdAt   DateTime @default(now())
+
+  @@index([subjectCode, year, semester])
+}
+
+// ==================== PROCESSING LOGS ====================
+
+model ProcessingLog {
+  id          String    @id @default(cuid())
+  fileName    String
+  fileType    String // "exam_paper", "syllabus", "lecture_note"
+  status      String // "pending", "processing", "completed", "failed"
+  errorMsg    String?
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
