@@ -15,15 +15,39 @@ import {
 	GraduationCap,
 	BookMarked,
 	Users,
+	AlertTriangle,
+	RefreshCw,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { getCourses, getBatches, getSemesters, getSubjects } from "../actions";
 
 type UploadType = "syllabus" | "exam" | "notes";
 
+interface DuplicateInfo {
+	isDuplicate: boolean;
+	duplicateType: "exact_file" | "same_subject" | "similar_content";
+	existingSyllabus: {
+		id: string;
+		subjectId: string;
+		subjectName: string;
+		subjectCode: string;
+		version: string;
+		uploadedAt: string;
+		modulesCount: number;
+	};
+	canReplace: boolean;
+	message: string;
+}
+
 interface UploadState {
 	file: File | null;
-	status: "idle" | "uploading" | "processing" | "success" | "error";
+	status:
+		| "idle"
+		| "uploading"
+		| "processing"
+		| "success"
+		| "error"
+		| "duplicate";
 	message: string;
 	extractionData?: {
 		extractedModules?: number;
@@ -31,6 +55,7 @@ interface UploadState {
 		extractedBooks?: number;
 		extractionError?: string;
 	};
+	duplicateInfo?: DuplicateInfo;
 }
 
 interface Course {
@@ -209,7 +234,7 @@ export default function AdminUploadPage() {
 		maxFiles: 1,
 	});
 
-	async function handleUpload() {
+	async function handleUpload(forceReplace = false) {
 		if (!uploadState.file) return;
 
 		// Validate required fields based on upload type
@@ -240,6 +265,7 @@ export default function AdminUploadPage() {
 			...prev,
 			status: "uploading",
 			message: "Uploading file...",
+			duplicateInfo: undefined,
 		}));
 
 		try {
@@ -251,6 +277,11 @@ export default function AdminUploadPage() {
 
 			if (uploadType === "exam") {
 				formData.append("examType", examType);
+			}
+
+			// If user confirmed replacement, add forceReplace flag
+			if (forceReplace) {
+				formData.append("forceReplace", "true");
 			}
 
 			setUploadState((prev) => ({
@@ -266,6 +297,23 @@ export default function AdminUploadPage() {
 			});
 
 			const result = await response.json();
+
+			// Handle duplicate response (409 Conflict)
+			if (response.status === 409 && result.isDuplicate) {
+				setUploadState((prev) => ({
+					...prev,
+					status: "duplicate",
+					message: result.message,
+					duplicateInfo: {
+						isDuplicate: true,
+						duplicateType: result.duplicateType,
+						existingSyllabus: result.existingSyllabus,
+						canReplace: result.canReplace || false,
+						message: result.message,
+					},
+				}));
+				return;
+			}
 
 			if (response.ok && result.success) {
 				const extractionData = result.data;
@@ -284,7 +332,9 @@ export default function AdminUploadPage() {
 					setUploadState({
 						file: null,
 						status: "success",
-						message: `Successfully processed ${uploadType}!`,
+						message: result.data?.wasReplaced
+							? `Successfully replaced ${uploadType}!`
+							: `Successfully processed ${uploadType}!`,
 						extractionData: {
 							extractedModules: extractionData?.extractedModules,
 							extractedTopics: extractionData?.extractedTopics,
@@ -301,11 +351,13 @@ export default function AdminUploadPage() {
 			} else {
 				throw new Error(result.error || "Upload failed");
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
+			const errorMessage =
+				error instanceof Error ? error.message : "Something went wrong";
 			setUploadState((prev) => ({
 				...prev,
 				status: "error",
-				message: error.message || "Something went wrong",
+				message: errorMessage,
 			}));
 		}
 	}
@@ -491,7 +543,79 @@ export default function AdminUploadPage() {
 
 			{/* Upload Area */}
 			<div className="card p-8">
-				{uploadState.status === "success" ? (
+				{uploadState.status === "duplicate" ? (
+					<motion.div
+						initial={{ opacity: 0, scale: 0.9 }}
+						animate={{ opacity: 1, scale: 1 }}
+						className="text-center py-8"
+					>
+						<div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+							<AlertTriangle className="w-8 h-8 text-yellow-400" />
+						</div>
+						<h3 className="text-xl font-semibold text-white mb-2">
+							{uploadState.duplicateInfo?.duplicateType === "exact_file"
+								? "Duplicate File Detected"
+								: uploadState.duplicateInfo?.duplicateType === "same_subject"
+								? "Syllabus Already Exists"
+								: "Content Mismatch Warning"}
+						</h3>
+						<p className="text-gray-400 mb-4 max-w-md mx-auto">
+							{uploadState.message}
+						</p>
+
+						{/* Existing syllabus info */}
+						{uploadState.duplicateInfo?.existingSyllabus && (
+							<div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
+								<p className="text-gray-400 text-sm mb-2">Existing Syllabus:</p>
+								<div className="space-y-1">
+									<p className="text-white font-medium">
+										{uploadState.duplicateInfo.existingSyllabus.subjectName}
+									</p>
+									<p className="text-gray-500 text-sm">
+										Code:{" "}
+										{uploadState.duplicateInfo.existingSyllabus.subjectCode}
+									</p>
+									<p className="text-gray-500 text-sm">
+										Version:{" "}
+										{uploadState.duplicateInfo.existingSyllabus.version}
+									</p>
+									<p className="text-gray-500 text-sm">
+										Modules:{" "}
+										{uploadState.duplicateInfo.existingSyllabus.modulesCount}
+									</p>
+									<p className="text-gray-500 text-sm">
+										Uploaded:{" "}
+										{new Date(
+											uploadState.duplicateInfo.existingSyllabus.uploadedAt
+										).toLocaleDateString()}
+									</p>
+								</div>
+							</div>
+						)}
+
+						<div className="flex justify-center gap-3">
+							{uploadState.duplicateInfo?.canReplace && (
+								<motion.button
+									whileHover={{ scale: 1.02 }}
+									whileTap={{ scale: 0.98 }}
+									onClick={() => handleUpload(true)}
+									className="btn-primary flex items-center gap-2"
+								>
+									<RefreshCw className="w-4 h-4" />
+									Replace Existing
+								</motion.button>
+							)}
+							<motion.button
+								whileHover={{ scale: 1.02 }}
+								whileTap={{ scale: 0.98 }}
+								onClick={resetUpload}
+								className="px-6 py-2.5 rounded-xl bg-gray-700 text-white hover:bg-gray-600 transition-colors"
+							>
+								Cancel
+							</motion.button>
+						</div>
+					</motion.div>
+				) : uploadState.status === "success" ? (
 					<motion.div
 						initial={{ opacity: 0, scale: 0.9 }}
 						animate={{ opacity: 1, scale: 1 }}
@@ -628,7 +752,7 @@ export default function AdminUploadPage() {
 							<motion.button
 								whileHover={{ scale: 1.02 }}
 								whileTap={{ scale: 0.98 }}
-								onClick={handleUpload}
+								onClick={() => handleUpload(false)}
 								className="btn-primary w-full flex items-center justify-center gap-2"
 							>
 								<Sparkles className="w-5 h-5" />

@@ -108,6 +108,7 @@ model Syllabus {
   version     String   @default("1.0")
   description String?
   pdfUrl      String?
+  fileHash    String?  // MD5 hash for duplicate detection
   totalHours  Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

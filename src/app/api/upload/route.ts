@@ -6,6 +6,11 @@ import {
 	extractSyllabusFromPDF,
 	saveSyllabusToDatabase,
 } from "@/lib/syllabus-extractor";
+import {
+	checkSyllabusDuplicate,
+	generateFileHash,
+	checkContentSimilarity,
+} from "@/lib/duplicate-checker";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Allow up to 60 seconds for AI processing
@@ -19,6 +24,7 @@ export async function POST(request: NextRequest) {
 		const type = formData.get("type") as string;
 		const subjectId = formData.get("subjectId") as string;
 		const examType = formData.get("examType") as string;
+		const forceReplace = formData.get("forceReplace") === "true"; // Allow override
 
 		if (!file) {
 			return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
@@ -30,6 +36,46 @@ export async function POST(request: NextRequest) {
 				{ error: "Only PDF files are allowed" },
 				{ status: 400 }
 			);
+		}
+
+		// Read file buffer early for duplicate checking
+		const bytes = await file.arrayBuffer();
+		const buffer = Buffer.from(bytes);
+
+		// ============ DUPLICATE CHECK FOR SYLLABUS ============
+		if (type === "syllabus" && subjectId && !forceReplace) {
+			const duplicateCheck = await checkSyllabusDuplicate(subjectId, buffer);
+
+			if (duplicateCheck.isDuplicate) {
+				// For exact file match, always block
+				if (duplicateCheck.duplicateType === "exact_file") {
+					return NextResponse.json(
+						{
+							success: false,
+							isDuplicate: true,
+							duplicateType: duplicateCheck.duplicateType,
+							existingSyllabus: duplicateCheck.existingSyllabus,
+							message: duplicateCheck.message,
+						},
+						{ status: 409 } // Conflict
+					);
+				}
+
+				// For same subject, return warning (UI will ask for confirmation)
+				if (duplicateCheck.duplicateType === "same_subject") {
+					return NextResponse.json(
+						{
+							success: false,
+							isDuplicate: true,
+							duplicateType: duplicateCheck.duplicateType,
+							existingSyllabus: duplicateCheck.existingSyllabus,
+							message: duplicateCheck.message,
+							canReplace: true, // UI can show replace option
+						},
+						{ status: 409 }
+					);
+				}
+			}
 		}
 
 		// Get subject details for folder organization
@@ -54,9 +100,10 @@ export async function POST(request: NextRequest) {
 		const filepath = join(uploadDir, filename);
 
 		// Save file
-		const bytes = await file.arrayBuffer();
-		const buffer = Buffer.from(bytes);
 		await writeFile(filepath, buffer);
+
+		// Generate file hash for future duplicate detection
+		const fileHash = generateFileHash(buffer);
 
 		// Create processing log entry
 		const log = await prisma.processingLog.create({
@@ -79,11 +126,32 @@ export async function POST(request: NextRequest) {
 					JSON.stringify(extractedData, null, 2)
 				);
 
-				// Save to database
+				// Check for content similarity (wrong subject warning)
+				const contentCheck = await checkContentSimilarity(
+					extractedData.subjectCode,
+					subjectId
+				);
+				if (contentCheck && !forceReplace) {
+					return NextResponse.json(
+						{
+							success: false,
+							isDuplicate: true,
+							duplicateType: contentCheck.duplicateType,
+							existingSyllabus: contentCheck.existingSyllabus,
+							message: contentCheck.message,
+							canReplace: true,
+							extractedSubjectCode: extractedData.subjectCode,
+						},
+						{ status: 409 }
+					);
+				}
+
+				// Save to database with file hash
 				const syllabusId = await saveSyllabusToDatabase(
 					subjectId,
 					extractedData,
-					filepath
+					filepath,
+					fileHash
 				);
 
 				// Update processing log
@@ -97,7 +165,9 @@ export async function POST(request: NextRequest) {
 
 				return NextResponse.json({
 					success: true,
-					message: "Syllabus uploaded and processed successfully",
+					message: forceReplace
+						? "Syllabus replaced successfully"
+						: "Syllabus uploaded and processed successfully",
 					data: {
 						logId,
 						filename,
@@ -110,6 +180,7 @@ export async function POST(request: NextRequest) {
 							0
 						),
 						extractedBooks: extractedData.books.length,
+						wasReplaced: forceReplace,
 					},
 				});
 			} catch (extractError) {

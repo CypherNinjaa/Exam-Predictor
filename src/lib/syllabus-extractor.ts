@@ -168,7 +168,8 @@ For books, distinguish between textbooks and reference books.`;
 export async function saveSyllabusToDatabase(
 	subjectId: string,
 	extractedData: ExtractedSyllabus,
-	pdfUrl?: string
+	pdfUrl?: string,
+	fileHash?: string
 ): Promise<string> {
 	try {
 		// Start a transaction with extended timeout (60 seconds for large syllabi)
@@ -206,6 +207,7 @@ export async function saveSyllabusToDatabase(
 						description: extractedData.description,
 						totalHours: extractedData.totalHours,
 						pdfUrl: pdfUrl,
+						fileHash: fileHash,
 						version: existingSyllabus
 							? `${parseFloat(existingSyllabus.version || "1.0") + 0.1}`
 							: "1.0",
@@ -216,6 +218,7 @@ export async function saveSyllabusToDatabase(
 						description: extractedData.description,
 						totalHours: extractedData.totalHours,
 						pdfUrl: pdfUrl,
+						fileHash: fileHash,
 						version: "1.0",
 					},
 				});
