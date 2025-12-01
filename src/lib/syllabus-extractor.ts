@@ -163,6 +163,7 @@ For books, distinguish between textbooks and reference books.`;
 
 /**
  * Save extracted syllabus to database
+ * Uses extended timeout and optimized batch operations
  */
 export async function saveSyllabusToDatabase(
 	subjectId: string,
@@ -170,128 +171,188 @@ export async function saveSyllabusToDatabase(
 	pdfUrl?: string
 ): Promise<string> {
 	try {
-		// Start a transaction to ensure data consistency
-		const result = await prisma.$transaction(async (tx) => {
-			// Check if syllabus already exists for this subject
-			const existingSyllabus = await tx.syllabus.findUnique({
-				where: { subjectId },
-				include: {
-					modules: true,
-					books: true,
-					evaluation: true,
-				},
-			});
-
-			// If exists, delete old modules, books, and evaluation (cascade should handle topics/subtopics)
-			if (existingSyllabus) {
-				await tx.module.deleteMany({
-					where: { syllabusId: existingSyllabus.id },
-				});
-				await tx.book.deleteMany({
-					where: { syllabusId: existingSyllabus.id },
-				});
-				if (existingSyllabus.evaluation) {
-					await tx.evaluationScheme.delete({
-						where: { syllabusId: existingSyllabus.id },
-					});
-				}
-			}
-
-			// Upsert syllabus
-			const syllabus = await tx.syllabus.upsert({
-				where: { subjectId },
-				update: {
-					description: extractedData.description,
-					totalHours: extractedData.totalHours,
-					pdfUrl: pdfUrl,
-					version: existingSyllabus
-						? `${parseFloat(existingSyllabus.version || "1.0") + 0.1}`
-						: "1.0",
-					updatedAt: new Date(),
-				},
-				create: {
-					subjectId,
-					description: extractedData.description,
-					totalHours: extractedData.totalHours,
-					pdfUrl: pdfUrl,
-					version: "1.0",
-				},
-			});
-
-			// Create modules with topics and subtopics
-			for (const moduleData of extractedData.modules) {
-				const module = await tx.module.create({
-					data: {
-						syllabusId: syllabus.id,
-						number: moduleData.number,
-						name: moduleData.name,
-						description: moduleData.description,
-						hours: moduleData.hours,
+		// Start a transaction with extended timeout (60 seconds for large syllabi)
+		const result = await prisma.$transaction(
+			async (tx) => {
+				// Check if syllabus already exists for this subject
+				const existingSyllabus = await tx.syllabus.findUnique({
+					where: { subjectId },
+					include: {
+						modules: true,
+						books: true,
+						evaluation: true,
 					},
 				});
 
-				// Create topics for this module
-				for (
-					let topicIndex = 0;
-					topicIndex < moduleData.topics.length;
-					topicIndex++
-				) {
-					const topicData = moduleData.topics[topicIndex];
-
-					const topic = await tx.topic.create({
-						data: {
-							moduleId: module.id,
-							name: topicData.name,
-							description: topicData.description,
-							orderIndex: topicIndex,
-						},
+				// If exists, delete old modules, books, and evaluation (cascade should handle topics/subtopics)
+				if (existingSyllabus) {
+					await tx.module.deleteMany({
+						where: { syllabusId: existingSyllabus.id },
 					});
-
-					// Create subtopics
-					if (topicData.subTopics && topicData.subTopics.length > 0) {
-						await tx.subTopic.createMany({
-							data: topicData.subTopics.map((subTopicName) => ({
-								topicId: topic.id,
-								name: subTopicName,
-							})),
+					await tx.book.deleteMany({
+						where: { syllabusId: existingSyllabus.id },
+					});
+					if (existingSyllabus.evaluation) {
+						await tx.evaluationScheme.delete({
+							where: { syllabusId: existingSyllabus.id },
 						});
 					}
 				}
-			}
 
-			// Create books
-			if (extractedData.books && extractedData.books.length > 0) {
-				await tx.book.createMany({
-					data: extractedData.books.map((book) => ({
-						syllabusId: syllabus.id,
-						title: book.title,
-						author: book.author,
-						publisher: book.publisher,
-						year: book.year,
-						edition: book.edition,
-						bookType: book.type === "TEXTBOOK" ? "TEXTBOOK" : "REFERENCE",
-					})),
-				});
-			}
-
-			// Create evaluation scheme
-			if (extractedData.evaluation) {
-				await tx.evaluationScheme.create({
-					data: {
-						syllabusId: syllabus.id,
-						midterm1: extractedData.evaluation.midterm1,
-						midterm2: extractedData.evaluation.midterm2,
-						endterm: extractedData.evaluation.endterm,
-						assignments: extractedData.evaluation.assignments,
-						practicals: extractedData.evaluation.practicals,
-						attendance: extractedData.evaluation.attendance,
-						otherComponents: extractedData.evaluation.other,
+				// Upsert syllabus
+				const syllabus = await tx.syllabus.upsert({
+					where: { subjectId },
+					update: {
+						description: extractedData.description,
+						totalHours: extractedData.totalHours,
+						pdfUrl: pdfUrl,
+						version: existingSyllabus
+							? `${parseFloat(existingSyllabus.version || "1.0") + 0.1}`
+							: "1.0",
+						updatedAt: new Date(),
+					},
+					create: {
+						subjectId,
+						description: extractedData.description,
+						totalHours: extractedData.totalHours,
+						pdfUrl: pdfUrl,
+						version: "1.0",
 					},
 				});
-			}
 
-			return syllabus.id;
-		});
+				// Create all modules first using createMany for efficiency
+				const modulesData = extractedData.modules.map((moduleData) => ({
+					syllabusId: syllabus.id,
+					number: moduleData.number,
+					name: moduleData.name,
+					description: moduleData.description,
+					hours: moduleData.hours,
+				}));
+
+				await tx.module.createMany({
+					data: modulesData,
+				});
+
+				// Fetch created modules to get their IDs
+				const createdModules = await tx.module.findMany({
+					where: { syllabusId: syllabus.id },
+					orderBy: { number: "asc" },
+				});
+
+				// Build a map of module number to module ID
+				const moduleIdMap = new Map(
+					createdModules.map((m) => [m.number, m.id])
+				);
+
+				// Prepare all topics data
+				const allTopicsData: Array<{
+					moduleId: string;
+					name: string;
+					description?: string;
+					orderIndex: number;
+					subTopics: string[];
+				}> = [];
+
+				for (const moduleData of extractedData.modules) {
+					const moduleId = moduleIdMap.get(moduleData.number);
+					if (!moduleId) continue;
+
+					moduleData.topics.forEach((topicData, topicIndex) => {
+						allTopicsData.push({
+							moduleId,
+							name: topicData.name,
+							description: topicData.description,
+							orderIndex: topicIndex,
+							subTopics: topicData.subTopics || [],
+						});
+					});
+				}
+
+				// Create all topics using createMany
+				await tx.topic.createMany({
+					data: allTopicsData.map((t) => ({
+						moduleId: t.moduleId,
+						name: t.name,
+						description: t.description,
+						orderIndex: t.orderIndex,
+					})),
+				});
+
+				// Fetch created topics to get their IDs for subtopics
+				const createdTopics = await tx.topic.findMany({
+					where: {
+						moduleId: { in: Array.from(moduleIdMap.values()) },
+					},
+					select: { id: true, moduleId: true, name: true },
+				});
+
+				// Build map of (moduleId + topicName) to topicId
+				const topicIdMap = new Map(
+					createdTopics.map((t) => [`${t.moduleId}-${t.name}`, t.id])
+				);
+
+				// Prepare all subtopics data
+				const allSubTopicsData: Array<{ topicId: string; name: string }> = [];
+
+				for (const topicData of allTopicsData) {
+					const topicId = topicIdMap.get(
+						`${topicData.moduleId}-${topicData.name}`
+					);
+					if (!topicId || !topicData.subTopics.length) continue;
+
+					for (const subTopicName of topicData.subTopics) {
+						allSubTopicsData.push({
+							topicId,
+							name: subTopicName,
+						});
+					}
+				}
+
+				// Create all subtopics at once
+				if (allSubTopicsData.length > 0) {
+					await tx.subTopic.createMany({
+						data: allSubTopicsData,
+					});
+				}
+
+				// Create books
+				if (extractedData.books && extractedData.books.length > 0) {
+					await tx.book.createMany({
+						data: extractedData.books.map((book) => ({
+							syllabusId: syllabus.id,
+							title: book.title,
+							author: book.author,
+							publisher: book.publisher,
+							year: book.year,
+							edition: book.edition,
+							bookType: book.type === "TEXTBOOK" ? "TEXTBOOK" : "REFERENCE",
+						})),
+					});
+				}
+
+				// Create evaluation scheme
+				if (extractedData.evaluation) {
+					await tx.evaluationScheme.create({
+						data: {
+							syllabusId: syllabus.id,
+							midterm1: extractedData.evaluation.midterm1,
+							midterm2: extractedData.evaluation.midterm2,
+							endterm: extractedData.evaluation.endterm,
+							assignments: extractedData.evaluation.assignments,
+							practicals: extractedData.evaluation.practicals,
+							attendance: extractedData.evaluation.attendance,
+							otherComponents: extractedData.evaluation.other,
+						},
+					});
+				}
+
+				return syllabus.id;
+			},
+			{
+				maxWait: 10000, // Max time to wait to acquire a transaction (10s)
+				timeout: 60000, // Max transaction duration (60s)
+			}
+		);
 
 		return result;
 	} catch (error) {
