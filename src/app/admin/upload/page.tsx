@@ -25,6 +25,12 @@ interface UploadState {
 	file: File | null;
 	status: "idle" | "uploading" | "processing" | "success" | "error";
 	message: string;
+	extractionData?: {
+		extractedModules?: number;
+		extractedTopics?: number;
+		extractedBooks?: number;
+		extractionError?: string;
+	};
 }
 
 interface Course {
@@ -61,6 +67,7 @@ export default function AdminUploadPage() {
 		file: null,
 		status: "idle",
 		message: "",
+		extractionData: undefined,
 	});
 
 	// Data states
@@ -246,12 +253,10 @@ export default function AdminUploadPage() {
 				formData.append("examType", examType);
 			}
 
-			// Simulate processing with Gemini
-			await new Promise((resolve) => setTimeout(resolve, 1500));
 			setUploadState((prev) => ({
 				...prev,
 				status: "processing",
-				message: "Processing with AI...",
+				message: "Processing with AI... This may take a moment.",
 			}));
 
 			// Call your upload API
@@ -262,12 +267,31 @@ export default function AdminUploadPage() {
 
 			const result = await response.json();
 
-			if (response.ok) {
-				setUploadState({
-					file: null,
-					status: "success",
-					message: `Successfully processed ${uploadType}!`,
-				});
+			if (response.ok && result.success) {
+				const extractionData = result.data;
+
+				// Check if there was an extraction error but PDF was still saved
+				if (extractionData?.extractionError) {
+					setUploadState({
+						file: null,
+						status: "success",
+						message: `PDF saved! AI extraction had issues: ${extractionData.extractionError}`,
+						extractionData: {
+							extractionError: extractionData.extractionError,
+						},
+					});
+				} else {
+					setUploadState({
+						file: null,
+						status: "success",
+						message: `Successfully processed ${uploadType}!`,
+						extractionData: {
+							extractedModules: extractionData?.extractedModules,
+							extractedTopics: extractionData?.extractedTopics,
+							extractedBooks: extractionData?.extractedBooks,
+						},
+					});
+				}
 				// Reset selections
 				setSelectedCourseId("");
 				setSelectedBatchId("");
@@ -291,6 +315,7 @@ export default function AdminUploadPage() {
 			file: null,
 			status: "idle",
 			message: "",
+			extractionData: undefined,
 		});
 	}
 
@@ -478,7 +503,59 @@ export default function AdminUploadPage() {
 						<h3 className="text-xl font-semibold text-white mb-2">
 							Upload Complete!
 						</h3>
-						<p className="text-gray-400 mb-6">{uploadState.message}</p>
+						<p className="text-gray-400 mb-4">{uploadState.message}</p>
+
+						{/* Show extraction stats if available */}
+						{uploadState.extractionData &&
+							!uploadState.extractionData.extractionError && (
+								<div className="flex justify-center gap-4 mb-6">
+									{uploadState.extractionData.extractedModules !==
+										undefined && (
+										<div className="bg-violet-500/10 border border-violet-500/20 rounded-xl px-4 py-2">
+											<p className="text-violet-400 text-2xl font-bold">
+												{uploadState.extractionData.extractedModules}
+											</p>
+											<p className="text-gray-500 text-xs">Modules</p>
+										</div>
+									)}
+									{uploadState.extractionData.extractedTopics !== undefined && (
+										<div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl px-4 py-2">
+											<p className="text-cyan-400 text-2xl font-bold">
+												{uploadState.extractionData.extractedTopics}
+											</p>
+											<p className="text-gray-500 text-xs">Topics</p>
+										</div>
+									)}
+									{uploadState.extractionData.extractedBooks !== undefined && (
+										<div className="bg-pink-500/10 border border-pink-500/20 rounded-xl px-4 py-2">
+											<p className="text-pink-400 text-2xl font-bold">
+												{uploadState.extractionData.extractedBooks}
+											</p>
+											<p className="text-gray-500 text-xs">Books</p>
+										</div>
+									)}
+								</div>
+							)}
+
+						{/* Show warning if extraction failed */}
+						{uploadState.extractionData?.extractionError && (
+							<div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6 text-left">
+								<div className="flex items-start gap-3">
+									<AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+									<div>
+										<p className="text-yellow-400 font-medium">
+											AI Extraction Warning
+										</p>
+										<p className="text-gray-400 text-sm mt-1">
+											Your PDF was saved but AI couldn't extract the content.
+											You can try uploading again or manually add the syllabus
+											content.
+										</p>
+									</div>
+								</div>
+							</div>
+						)}
+
 						<motion.button
 							whileHover={{ scale: 1.02 }}
 							whileTap={{ scale: 0.98 }}
