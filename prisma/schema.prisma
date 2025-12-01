@@ -409,10 +409,43 @@ model User {
   activityLogs    ActivityLog[]
   predictionLogs  PredictionLog[]
   downloadLogs    DownloadLog[]
+  conversations   ChatConversation[]
   
   @@index([role])
   @@index([isBanned])
   @@index([lastActiveAt])
+}
+
+// ==================== AI CHAT ====================
+
+model ChatConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   // First message or custom title
+  modelUsed String   @default("gemini-3.0") // "gemini-3.0" or "advanced"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+  
+  @@index([userId])
+  @@index([updatedAt])
+}
+
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  role           String           // "user" or "model"
+  text           String           @db.Text
+  createdAt      DateTime         @default(now())
+  
+  // Relations
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId])
+  @@index([createdAt])
 }
 
 enum ActivityType {
@@ -426,6 +459,8 @@ enum ActivityType {
   USER_PROMOTED
   USER_BANNED
   USER_UNBANNED
+  CHAT_CREATED
+  CHAT_MESSAGE_SENT
 }
 
 model ActivityLog {

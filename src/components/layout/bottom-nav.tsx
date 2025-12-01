@@ -12,14 +12,15 @@ import {
 	Shield,
 	User,
 	BookText,
+	MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
 	{ href: "/", label: "Home", icon: Home },
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+	{ href: "/chat", label: "Chat", icon: MessageSquare },
 	{ href: "/notes", label: "Notes", icon: BookText },
-	{ href: "/predict", label: "Predict", icon: Sparkles },
 ];
 
 export function BottomNav() {

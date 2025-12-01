@@ -13,6 +13,7 @@ import {
 	LogIn,
 	BookText,
 	Search,
+	MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,7 @@ const navItems = [
 	{ href: "/", label: "Home", icon: Home },
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 	{ href: "/notes", label: "Notes", icon: BookText },
-	{ href: "/upload", label: "Upload", icon: Upload },
+	{ href: "/chat", label: "Chat", icon: MessageSquare },
 	{ href: "/predict", label: "Predict", icon: Sparkles },
 ];
 
