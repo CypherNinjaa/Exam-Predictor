@@ -25,26 +25,36 @@ interface Question {
 	marks: number;
 	difficulty: string;
 	bloomsLevel: string;
+	questionNumber: string;
 	exam: {
 		id: string;
-		type: string;
-		subject: {
-			id: string;
-			code: string;
-			name: string;
+		examType: string;
+		subjectOffering: {
+			subject: {
+				id: string;
+				code: string;
+				name: string;
+			};
 		};
 	};
 	topic: {
 		id: string;
 		name: string;
 	} | null;
+	module: {
+		id: string;
+		name: string;
+		number: number;
+	} | null;
 }
 
 interface DropdownData {
 	subjects: any[];
-	academicYears: any[];
-	semesters: any[];
+	exams: any[];
 	topics: any[];
+	modules: any[];
+	subjectOfferings: any[];
+	semesters: any[];
 }
 
 export default function QuestionsPage() {
@@ -89,7 +99,7 @@ export default function QuestionsPage() {
 		const matchesDifficulty =
 			!filterDifficulty || q.difficulty === filterDifficulty;
 		const matchesSubject =
-			!filterSubject || q.exam?.subject?.id === filterSubject;
+			!filterSubject || q.exam?.subjectOffering?.subject?.id === filterSubject;
 		return matchesSearch && matchesDifficulty && matchesSubject;
 	});
 
@@ -241,7 +251,7 @@ export default function QuestionsPage() {
 
 									<div className="flex flex-wrap items-center gap-2">
 										<span className="badge-cyan text-xs">
-											{question.exam?.subject?.code || "N/A"}
+											{question.exam?.subjectOffering?.subject?.code || "N/A"}
 										</span>
 										<span
 											className={`badge text-xs border ${
@@ -379,8 +389,12 @@ export default function QuestionsPage() {
 										<option value="">Select an exam</option>
 										{exams.map((exam) => (
 											<option key={exam.id} value={exam.id}>
-												{exam.subject?.code} - {exam.type.replace("_", " ")} (
-												{new Date(exam.date).toLocaleDateString()})
+												{exam.subjectOffering?.subject?.code} -{" "}
+												{exam.examType.replace("_", " ")} (
+												{exam.examDate
+													? new Date(exam.examDate).toLocaleDateString()
+													: "No date"}
+												)
 											</option>
 										))}
 									</select>

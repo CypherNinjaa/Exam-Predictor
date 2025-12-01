@@ -308,7 +308,7 @@ export async function getExams() {
 }
 
 const ExamSchema = z.object({
-	type: z.enum(["MT1", "MT2", "END_TERM", "QUIZ", "ASSIGNMENT"]),
+	type: z.enum(["MIDTERM_1", "MIDTERM_2", "END_TERM"]),
 	date: z.string().min(1, "Date is required"),
 	totalMarks: z.coerce.number().min(1),
 	subjectOfferingId: z.string().min(1, "Subject offering is required"),

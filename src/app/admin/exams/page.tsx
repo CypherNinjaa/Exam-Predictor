@@ -112,21 +112,18 @@ export default function ExamsPage() {
 	}
 
 	const examTypeColors: Record<string, string> = {
-		MT1: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-400",
-		MT2: "from-cyan-500/20 to-cyan-500/5 border-cyan-500/30 text-cyan-400",
+		MIDTERM_1:
+			"from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-400",
+		MIDTERM_2:
+			"from-cyan-500/20 to-cyan-500/5 border-cyan-500/30 text-cyan-400",
 		END_TERM:
 			"from-purple-500/20 to-purple-500/5 border-purple-500/30 text-purple-400",
-		QUIZ: "from-green-500/20 to-green-500/5 border-green-500/30 text-green-400",
-		ASSIGNMENT:
-			"from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-400",
 	};
 
 	const examTypeLabels: Record<string, string> = {
-		MT1: "Mid Term 1",
-		MT2: "Mid Term 2",
+		MIDTERM_1: "Mid Term 1",
+		MIDTERM_2: "Mid Term 2",
 		END_TERM: "End Term",
-		QUIZ: "Quiz",
-		ASSIGNMENT: "Assignment",
 	};
 
 	return (
@@ -170,11 +167,9 @@ export default function ExamsPage() {
 					className="input w-48"
 				>
 					<option value="">All Types</option>
-					<option value="MT1">Mid Term 1</option>
-					<option value="MT2">Mid Term 2</option>
+					<option value="MIDTERM_1">Mid Term 1</option>
+					<option value="MIDTERM_2">Mid Term 2</option>
 					<option value="END_TERM">End Term</option>
-					<option value="QUIZ">Quiz</option>
-					<option value="ASSIGNMENT">Assignment</option>
 				</select>
 			</div>
 
@@ -322,11 +317,9 @@ export default function ExamsPage() {
 										Exam Type *
 									</label>
 									<select name="type" required className="input w-full">
-										<option value="MT1">Mid Term 1</option>
-										<option value="MT2">Mid Term 2</option>
+										<option value="MIDTERM_1">Mid Term 1</option>
+										<option value="MIDTERM_2">Mid Term 2</option>
 										<option value="END_TERM">End Term</option>
-										<option value="QUIZ">Quiz</option>
-										<option value="ASSIGNMENT">Assignment</option>
 									</select>
 								</div>
 
