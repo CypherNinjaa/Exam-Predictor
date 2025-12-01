@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { gemini } from "@/lib/gemini";
+import { generateContent, MODELS } from "@/lib/gemini";
 
 export async function POST(request: NextRequest) {
 	try {
@@ -131,9 +131,8 @@ Consider:
 
 Return ONLY the JSON, no other text.`;
 
-		const model = gemini.getGenerativeModel({ model: "gemini-2.0-flash" });
-		const result = await model.generateContent(prompt);
-		const responseText = result.response.text();
+		const result = await generateContent(prompt, MODELS.FAST);
+		const responseText = result.text || "";
 
 		// Parse JSON from response
 		const jsonMatch = responseText.match(/\{[\s\S]*\}/);

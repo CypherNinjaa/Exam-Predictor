@@ -7,16 +7,12 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContent, MODELS } from "../lib/gemini";
 import pdfParse from "pdf-parse";
 import dotenv from "dotenv";
 
 // Load environment variables
 dotenv.config();
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-// Use gemini-2.0-flash or gemini-1.5-flash-latest
-const geminiPro = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 const SYLLABUS_EXTRACTION_PROMPT = `
 You are an expert at analyzing university syllabus documents.
@@ -132,11 +128,12 @@ async function extractSyllabusStructure(
 ): Promise<SyllabusStructure> {
 	console.log("\n🤖 Analyzing with Gemini AI...\n");
 
-	const result = await geminiPro.generateContent([
+	const result = await generateContent(
 		SYLLABUS_EXTRACTION_PROMPT + text,
-	]);
+		MODELS.FAST
+	);
 
-	const response = result.response.text();
+	const response = result.text || "";
 
 	// Parse JSON from response
 	const jsonMatch = response.match(/\{[\s\S]*\}/);

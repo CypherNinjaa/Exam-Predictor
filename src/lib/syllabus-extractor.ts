@@ -1,4 +1,4 @@
-import { geminiPro } from "./gemini";
+import { generateWithFallback, MODELS } from "./gemini";
 import { prisma } from "./prisma";
 
 // Types for extracted syllabus data
@@ -110,18 +110,22 @@ Extract all information accurately. If a field is not found, omit it or use null
 For modules, maintain the order as they appear in the document.
 For books, distinguish between textbooks and reference books.`;
 
-		const result = await geminiPro.generateContent([
-			{
-				inlineData: {
-					mimeType: "application/pdf",
-					data: base64PDF,
+		// Use generateWithFallback to try multiple models if one fails
+		const result = await generateWithFallback(
+			[
+				{
+					inlineData: {
+						mimeType: "application/pdf",
+						data: base64PDF,
+					},
 				},
-			},
-			{ text: prompt },
-		]);
+				{ text: prompt },
+			],
+			MODELS.DOCUMENT
+		);
 
-		const response = result.response;
-		const text = response.text();
+		// New SDK returns text directly from response
+		const text = result.text || "";
 
 		// Parse the JSON response
 		// Remove any markdown code blocks if present

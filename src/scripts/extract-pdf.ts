@@ -7,7 +7,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { geminiPro } from "../lib/gemini";
+import { generateContent, MODELS } from "../lib/gemini";
 
 // Extraction prompt for exam papers
 const EXTRACTION_PROMPT = `
@@ -95,17 +95,20 @@ async function extractFromImage(
 	console.log(`📊 File size: ${(imageData.length / 1024).toFixed(2)} KB`);
 
 	// Call Gemini Vision
-	const result = await geminiPro.generateContent([
-		EXTRACTION_PROMPT,
-		{
-			inlineData: {
-				mimeType,
-				data: base64Image,
+	const result = await generateContent(
+		[
+			{ text: EXTRACTION_PROMPT },
+			{
+				inlineData: {
+					mimeType,
+					data: base64Image,
+				},
 			},
-		},
-	]);
+		],
+		MODELS.DOCUMENT
+	);
 
-	const response = result.response.text();
+	const response = result.text || "";
 
 	// Parse JSON from response
 	const jsonMatch = response.match(/\[[\s\S]*\]/);
