@@ -10,8 +10,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  // For Railway: Use direct URL if proxy has issues
-  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ==================== CORE ENTITIES ====================
