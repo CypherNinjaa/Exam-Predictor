@@ -11,3 +11,7 @@ cmds = ['npx prisma generate', 'npm run build']
 
 [start]
 cmd = 'npx prisma migrate deploy && npm run start'
+
+# Disable caching for tsconfig.tsbuildinfo to avoid mount issues
+[caches]
+skip = ['tsconfig.tsbuildinfo']
