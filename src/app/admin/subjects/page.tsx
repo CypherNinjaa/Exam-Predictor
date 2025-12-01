@@ -12,23 +12,57 @@ import {
 	Loader2,
 	FileText,
 	GraduationCap,
+	ChevronDown,
+	ChevronRight,
 } from "lucide-react";
 import {
 	getSubjects,
 	createSubject,
 	updateSubject,
 	deleteSubject,
+	getCourses,
+	getBatches,
+	getSemesters,
 } from "../actions";
+
+interface Course {
+	id: string;
+	code: string;
+	name: string;
+	duration: number;
+}
+
+interface Batch {
+	id: string;
+	startYear: number;
+	endYear: number;
+	courseId: string;
+	course: { name: string; code: string };
+}
+
+interface Semester {
+	id: string;
+	number: number;
+	batchId: string;
+}
 
 interface Subject {
 	id: string;
 	code: string;
 	name: string;
 	credits: number;
-	collegeId: string;
+	semesterId: string;
+	semester: {
+		number: number;
+		batch: {
+			startYear: number;
+			endYear: number;
+			course: { code: string; name: string };
+		};
+	};
+	syllabus: { id: string } | null;
 	_count: {
-		syllabi: number;
-		offerings: number;
+		exams: number;
 	};
 }
 
@@ -41,29 +75,140 @@ export default function SubjectsPage() {
 	const [isPending, startTransition] = useTransition();
 	const [error, setError] = useState("");
 
+	// Form dropdown data
+	const [courses, setCourses] = useState<Course[]>([]);
+	const [batches, setBatches] = useState<Batch[]>([]);
+	const [semesters, setSemesters] = useState<Semester[]>([]);
+
+	// Form selections
+	const [selectedCourseId, setSelectedCourseId] = useState("");
+	const [selectedBatchId, setSelectedBatchId] = useState("");
+	const [selectedSemesterId, setSelectedSemesterId] = useState("");
+
+	// Grouping state
+	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
 	useEffect(() => {
-		fetchSubjects();
+		fetchData();
 	}, []);
 
-	async function fetchSubjects() {
-		const result = await getSubjects();
-		if (result.success && result.data) {
-			setSubjects(result.data);
+	async function fetchData() {
+		setLoading(true);
+		const [subjectsResult, coursesResult] = await Promise.all([
+			getSubjects(),
+			getCourses(),
+		]);
+		if (subjectsResult.success && subjectsResult.data) {
+			setSubjects(subjectsResult.data as Subject[]);
+		}
+		if (coursesResult.success && coursesResult.data) {
+			setCourses(coursesResult.data);
 		}
 		setLoading(false);
 	}
 
-	const filteredSubjects = subjects.filter(
-		(s) =>
-			s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-			s.code.toLowerCase().includes(searchQuery.toLowerCase())
+	// Load batches when course is selected in form
+	useEffect(() => {
+		async function loadBatches() {
+			if (selectedCourseId) {
+				const result = await getBatches(selectedCourseId);
+				if (result.success && result.data) {
+					setBatches(result.data);
+				}
+			} else {
+				setBatches([]);
+			}
+			setSelectedBatchId("");
+			setSemesters([]);
+			setSelectedSemesterId("");
+		}
+		loadBatches();
+	}, [selectedCourseId]);
+
+	// Load semesters when batch is selected
+	useEffect(() => {
+		async function loadSemesters() {
+			if (selectedBatchId) {
+				const result = await getSemesters(selectedBatchId);
+				if (result.success && result.data) {
+					setSemesters(result.data as Semester[]);
+				}
+			} else {
+				setSemesters([]);
+			}
+			setSelectedSemesterId("");
+		}
+		loadSemesters();
+	}, [selectedBatchId]);
+
+	// Group subjects by course → batch → semester
+	const groupedSubjects = subjects.reduce(
+		(acc, subject) => {
+			const course = subject.semester.batch.course;
+			const batch = subject.semester.batch;
+			const courseKey = course.code;
+			const batchKey = `${batch.startYear}-${batch.endYear}`;
+			const semKey = `Sem ${subject.semester.number}`;
+			const groupKey = `${courseKey}|${batchKey}|${semKey}`;
+
+			if (!acc[groupKey]) {
+				acc[groupKey] = {
+					courseCode: courseKey,
+					courseName: course.name,
+					batchLabel: batchKey,
+					semNumber: subject.semester.number,
+					subjects: [],
+				};
+			}
+			acc[groupKey].subjects.push(subject);
+			return acc;
+		},
+		{} as Record<
+			string,
+			{
+				courseCode: string;
+				courseName: string;
+				batchLabel: string;
+				semNumber: number;
+				subjects: Subject[];
+			}
+		>
 	);
+
+	const filteredGroups = Object.entries(groupedSubjects).filter(([_, group]) =>
+		group.subjects.some(
+			(s) =>
+				s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+				s.code.toLowerCase().includes(searchQuery.toLowerCase())
+		)
+	);
+
+	function toggleGroup(key: string) {
+		setExpandedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				next.add(key);
+			}
+			return next;
+		});
+	}
 
 	async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
 		e.preventDefault();
 		setError("");
 
 		const formData = new FormData(e.currentTarget);
+
+		if (!editingSubject && !selectedSemesterId) {
+			setError("Please select a semester");
+			return;
+		}
+
+		if (!editingSubject) {
+			formData.append("semesterId", selectedSemesterId);
+		}
 
 		startTransition(async () => {
 			let result;
@@ -76,7 +221,10 @@ export default function SubjectsPage() {
 			if (result.success) {
 				setIsModalOpen(false);
 				setEditingSubject(null);
-				fetchSubjects();
+				setSelectedCourseId("");
+				setSelectedBatchId("");
+				setSelectedSemesterId("");
+				fetchData();
 			} else {
 				setError(result.error || "Something went wrong");
 			}
@@ -89,7 +237,7 @@ export default function SubjectsPage() {
 		startTransition(async () => {
 			const result = await deleteSubject(id);
 			if (result.success) {
-				fetchSubjects();
+				fetchData();
 			}
 		});
 	}
@@ -101,7 +249,7 @@ export default function SubjectsPage() {
 				<div>
 					<h1 className="text-2xl font-bold text-white">Subjects</h1>
 					<p className="text-gray-400 text-sm">
-						Manage all subjects in the system
+						Manage subjects for each semester
 					</p>
 				</div>
 
@@ -131,17 +279,17 @@ export default function SubjectsPage() {
 				/>
 			</div>
 
-			{/* Subjects Grid */}
+			{/* Subjects List */}
 			{loading ? (
-				<div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-					{[...Array(6)].map((_, i) => (
+				<div className="space-y-4">
+					{[...Array(3)].map((_, i) => (
 						<div
 							key={i}
-							className="h-48 bg-white/5 rounded-2xl animate-pulse"
+							className="h-20 bg-white/5 rounded-2xl animate-pulse"
 						/>
 					))}
 				</div>
-			) : filteredSubjects.length === 0 ? (
+			) : filteredGroups.length === 0 ? (
 				<div className="text-center py-16">
 					<BookOpen className="w-12 h-12 text-gray-600 mx-auto mb-4" />
 					<h3 className="text-lg font-medium text-gray-400">
@@ -150,72 +298,105 @@ export default function SubjectsPage() {
 					<p className="text-gray-500 text-sm">
 						{searchQuery
 							? "Try a different search term"
-							: "Add your first subject to get started"}
+							: "Add subjects to a semester to get started"}
 					</p>
 				</div>
 			) : (
-				<motion.div
-					initial={{ opacity: 0 }}
-					animate={{ opacity: 1 }}
-					className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"
-				>
-					{filteredSubjects.map((subject, index) => (
-						<motion.div
-							key={subject.id}
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: index * 0.05 }}
-							className="card card-hover p-5 group"
-						>
-							<div className="flex items-start justify-between mb-4">
-								<div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center">
-									<BookOpen className="w-6 h-6 text-purple-400" />
-								</div>
-
-								<div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-									<button
-										onClick={() => {
-											setEditingSubject(subject);
-											setIsModalOpen(true);
-										}}
-										className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-									>
-										<Edit2 className="w-4 h-4" />
-									</button>
-									<button
-										onClick={() => handleDelete(subject.id)}
-										className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
-									>
-										<Trash2 className="w-4 h-4" />
-									</button>
-								</div>
-							</div>
-
-							<h3 className="font-semibold text-white text-lg mb-1">
-								{subject.name}
-							</h3>
-							<p className="text-purple-400 text-sm font-medium mb-3">
-								{subject.code}
-							</p>
-
-							<div className="flex items-center gap-4 pt-4 border-t border-white/5">
-								<div className="flex items-center gap-2 text-sm text-gray-400">
-									<span className="badge-purple">
-										{subject.credits} Credits
+				<div className="space-y-4">
+					{filteredGroups
+						.sort((a, b) => a[0].localeCompare(b[0]))
+						.map(([key, group]) => (
+							<div
+								key={key}
+								className="border border-white/10 rounded-xl overflow-hidden"
+							>
+								{/* Group Header */}
+								<button
+									onClick={() => toggleGroup(key)}
+									className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] transition-colors"
+								>
+									<div className="flex items-center gap-3">
+										{expandedGroups.has(key) ? (
+											<ChevronDown className="w-5 h-5 text-gray-400" />
+										) : (
+											<ChevronRight className="w-5 h-5 text-gray-400" />
+										)}
+										<div className="flex items-center gap-2">
+											<span className="badge-purple">{group.courseCode}</span>
+											<span className="text-white font-medium">
+												{group.batchLabel}
+											</span>
+											<span className="text-gray-400">•</span>
+											<span className="text-gray-300">
+												Semester {group.semNumber}
+											</span>
+										</div>
+									</div>
+									<span className="text-gray-500 text-sm">
+										{group.subjects.length} subjects
 									</span>
-								</div>
-								<div className="flex items-center gap-2 text-sm text-gray-500">
-									<FileText className="w-3.5 h-3.5" />
-									{subject._count.syllabi} syllabi
-								</div>
-								<div className="flex items-center gap-2 text-sm text-gray-500">
-									<GraduationCap className="w-3.5 h-3.5" />
-									{subject._count.offerings} offerings
-								</div>
+								</button>
+
+								{/* Subjects */}
+								{expandedGroups.has(key) && (
+									<div className="divide-y divide-white/5">
+										{group.subjects.map((subject) => (
+											<div
+												key={subject.id}
+												className="flex items-center justify-between p-4 hover:bg-white/[0.03]"
+											>
+												<div className="flex items-center gap-4">
+													<div className="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center">
+														<BookOpen className="w-5 h-5 text-violet-400" />
+													</div>
+													<div>
+														<div className="flex items-center gap-2">
+															<span className="text-white font-medium">
+																{subject.name}
+															</span>
+															<span className="badge-purple text-xs">
+																{subject.code}
+															</span>
+														</div>
+														<div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
+															<span>{subject.credits} credits</span>
+															{subject.syllabus && (
+																<span className="flex items-center gap-1">
+																	<FileText className="w-3 h-3" />
+																	Syllabus
+																</span>
+															)}
+															<span className="flex items-center gap-1">
+																<GraduationCap className="w-3 h-3" />
+																{subject._count.exams} exams
+															</span>
+														</div>
+													</div>
+												</div>
+												<div className="flex items-center gap-1">
+													<button
+														onClick={() => {
+															setEditingSubject(subject);
+															setIsModalOpen(true);
+														}}
+														className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+													>
+														<Edit2 className="w-4 h-4" />
+													</button>
+													<button
+														onClick={() => handleDelete(subject.id)}
+														className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+													>
+														<Trash2 className="w-4 h-4" />
+													</button>
+												</div>
+											</div>
+										))}
+									</div>
+								)}
 							</div>
-						</motion.div>
-					))}
-				</motion.div>
+						))}
+				</div>
 			)}
 
 			{/* Modal */}
@@ -254,6 +435,79 @@ export default function SubjectsPage() {
 							)}
 
 							<form onSubmit={handleSubmit} className="space-y-4">
+								{/* Semester Selection (only for new subjects) */}
+								{!editingSubject && (
+									<>
+										<div>
+											<label className="block text-sm font-medium text-gray-300 mb-2">
+												Course *
+											</label>
+											<select
+												value={selectedCourseId}
+												onChange={(e) => setSelectedCourseId(e.target.value)}
+												className="select w-full"
+												required
+											>
+												<option value="">Select Course</option>
+												{courses.map((c) => (
+													<option key={c.id} value={c.id}>
+														{c.code} - {c.name}
+													</option>
+												))}
+											</select>
+										</div>
+
+										<div>
+											<label className="block text-sm font-medium text-gray-300 mb-2">
+												Batch *
+											</label>
+											<select
+												value={selectedBatchId}
+												onChange={(e) => setSelectedBatchId(e.target.value)}
+												className="select w-full"
+												disabled={!selectedCourseId}
+												required
+											>
+												<option value="">Select Batch</option>
+												{batches.map((b) => (
+													<option key={b.id} value={b.id}>
+														{b.startYear} - {b.endYear}
+													</option>
+												))}
+											</select>
+										</div>
+
+										<div>
+											<label className="block text-sm font-medium text-gray-300 mb-2">
+												Semester *
+											</label>
+											<select
+												value={selectedSemesterId}
+												onChange={(e) => setSelectedSemesterId(e.target.value)}
+												className="select w-full"
+												disabled={!selectedBatchId}
+												required
+											>
+												<option value="">Select Semester</option>
+												{semesters.map((s) => (
+													<option key={s.id} value={s.id}>
+														Semester {s.number} (Year {Math.ceil(s.number / 2)})
+													</option>
+												))}
+											</select>
+										</div>
+									</>
+								)}
+
+								{editingSubject && (
+									<div className="p-3 rounded-lg bg-white/5 border border-white/10 text-sm text-gray-400">
+										{editingSubject.semester.batch.course.code}{" "}
+										{editingSubject.semester.batch.startYear}-
+										{editingSubject.semester.batch.endYear} • Semester{" "}
+										{editingSubject.semester.number}
+									</div>
+								)}
+
 								<div>
 									<label className="block text-sm font-medium text-gray-300 mb-2">
 										Subject Code *
@@ -262,7 +516,7 @@ export default function SubjectsPage() {
 										type="text"
 										name="code"
 										defaultValue={editingSubject?.code || ""}
-										placeholder="e.g., CSE301"
+										placeholder="e.g., BCA301"
 										required
 										className="input w-full"
 									/>
@@ -276,7 +530,7 @@ export default function SubjectsPage() {
 										type="text"
 										name="name"
 										defaultValue={editingSubject?.name || ""}
-										placeholder="e.g., Data Structures"
+										placeholder="e.g., Database Management"
 										required
 										className="input w-full"
 									/>
@@ -289,7 +543,7 @@ export default function SubjectsPage() {
 									<input
 										type="number"
 										name="credits"
-										defaultValue={editingSubject?.credits || 4}
+										defaultValue={editingSubject?.credits || 3}
 										min={1}
 										max={10}
 										required

@@ -12,6 +12,8 @@ import {
 	ChevronRight,
 	Layers,
 	BookOpen,
+	GraduationCap,
+	Users,
 } from "lucide-react";
 import { getSyllabi, deleteSyllabus, getSyllabusById } from "../actions";
 import Link from "next/link";
@@ -25,8 +27,24 @@ interface Syllabus {
 		id: string;
 		code: string;
 		name: string;
+		semester: {
+			number: number;
+			batch: {
+				startYear: number;
+				endYear: number;
+				course: {
+					code: string;
+					name: string;
+				};
+			};
+		};
 	};
-	modules: any[];
+	modules: Array<{
+		id: string;
+		number: number;
+		name: string;
+		topics: Array<{ id: string; name: string }>;
+	}>;
 	_count: {
 		modules: number;
 	};
@@ -35,9 +53,36 @@ interface Syllabus {
 interface SyllabusDetail {
 	id: string;
 	version: string | null;
-	subject: any;
-	modules: any[];
-	books: any[];
+	subject: {
+		code: string;
+		name: string;
+		semester: {
+			number: number;
+			batch: {
+				startYear: number;
+				endYear: number;
+				course: { code: string; name: string };
+			};
+		};
+	};
+	modules: Array<{
+		id: string;
+		number: number;
+		name: string;
+		hours: number | null;
+		topics: Array<{
+			id: string;
+			name: string;
+			subTopics: Array<{ id: string; name: string }>;
+		}>;
+	}>;
+	books: Array<{
+		id: string;
+		title: string;
+		author: string | null;
+		publisher: string | null;
+		bookType: string;
+	}>;
 	evaluation: any;
 }
 
@@ -53,6 +98,7 @@ export default function SyllabiPage() {
 	const [expandedModules, setExpandedModules] = useState<Set<string>>(
 		new Set()
 	);
+	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
 	useEffect(() => {
 		fetchSyllabi();
@@ -61,7 +107,7 @@ export default function SyllabiPage() {
 	async function fetchSyllabi() {
 		const result = await getSyllabi();
 		if (result.success && result.data) {
-			setSyllabi(result.data);
+			setSyllabi(result.data as Syllabus[]);
 		}
 		setLoading(false);
 	}
@@ -70,7 +116,7 @@ export default function SyllabiPage() {
 		setViewingId(id);
 		const result = await getSyllabusById(id);
 		if (result.success && result.data) {
-			setSyllabusDetail(result.data);
+			setSyllabusDetail(result.data as SyllabusDetail);
 		}
 	}
 
@@ -91,14 +137,59 @@ export default function SyllabiPage() {
 			s.subject.name.toLowerCase().includes(searchQuery.toLowerCase())
 	);
 
+	// Group syllabi by Course → Batch → Semester
+	const groupedSyllabi = filteredSyllabi.reduce(
+		(acc, syllabus) => {
+			const course = syllabus.subject.semester.batch.course;
+			const batch = syllabus.subject.semester.batch;
+			const key = `${course.code}|${batch.startYear}-${batch.endYear}|Sem ${syllabus.subject.semester.number}`;
+
+			if (!acc[key]) {
+				acc[key] = {
+					courseCode: course.code,
+					courseName: course.name,
+					batchLabel: `${batch.startYear}-${batch.endYear}`,
+					semNumber: syllabus.subject.semester.number,
+					items: [],
+				};
+			}
+			acc[key].items.push(syllabus);
+			return acc;
+		},
+		{} as Record<
+			string,
+			{
+				courseCode: string;
+				courseName: string;
+				batchLabel: string;
+				semNumber: number;
+				items: Syllabus[];
+			}
+		>
+	);
+
 	const toggleModule = (moduleId: string) => {
-		const newExpanded = new Set(expandedModules);
-		if (newExpanded.has(moduleId)) {
-			newExpanded.delete(moduleId);
-		} else {
-			newExpanded.add(moduleId);
-		}
-		setExpandedModules(newExpanded);
+		setExpandedModules((prev) => {
+			const next = new Set(prev);
+			if (next.has(moduleId)) {
+				next.delete(moduleId);
+			} else {
+				next.add(moduleId);
+			}
+			return next;
+		});
+	};
+
+	const toggleGroup = (key: string) => {
+		setExpandedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				next.add(key);
+			}
+			return next;
+		});
 	};
 
 	return (
@@ -164,62 +255,99 @@ export default function SyllabiPage() {
 					animate={{ opacity: 1 }}
 					className="space-y-4"
 				>
-					{filteredSyllabi.map((syllabus, index) => (
-						<motion.div
-							key={syllabus.id}
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: index * 0.05 }}
-							className="card card-hover p-5 group"
-						>
-							<div className="flex items-start justify-between">
-								<div className="flex items-start gap-4">
-									<div className="w-14 h-14 rounded-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
-										<FileText className="w-7 h-7 text-pink-400" />
-									</div>
-
-									<div>
-										<h3 className="font-semibold text-white text-lg">
-											{syllabus.subject.name}
-										</h3>
-										<p className="text-pink-400 text-sm font-medium mb-2">
-											{syllabus.subject.code}
-										</p>
-
-										<div className="flex items-center gap-4 text-sm text-gray-500">
-											<span className="badge-pink">
-												v{syllabus.version || "1.0"}
+					{Object.entries(groupedSyllabi)
+						.sort((a, b) => a[0].localeCompare(b[0]))
+						.map(([key, group]) => (
+							<div
+								key={key}
+								className="border border-white/10 rounded-xl overflow-hidden"
+							>
+								{/* Group Header */}
+								<button
+									onClick={() => toggleGroup(key)}
+									className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] transition-colors"
+								>
+									<div className="flex items-center gap-3">
+										{expandedGroups.has(key) ? (
+											<ChevronDown className="w-5 h-5 text-gray-400" />
+										) : (
+											<ChevronRight className="w-5 h-5 text-gray-400" />
+										)}
+										<div className="flex items-center gap-2">
+											<span className="badge-purple">{group.courseCode}</span>
+											<span className="text-white font-medium">
+												{group.batchLabel}
 											</span>
-											<div className="flex items-center gap-1">
-												<Layers className="w-3.5 h-3.5" />
-												{syllabus._count.modules} modules
-											</div>
-											<span>
-												Added{" "}
-												{new Date(syllabus.createdAt).toLocaleDateString()}
+											<span className="text-gray-400">•</span>
+											<span className="text-gray-300">
+												Semester {group.semNumber}
 											</span>
 										</div>
 									</div>
-								</div>
+									<span className="text-gray-500 text-sm">
+										{group.items.length} syllabi
+									</span>
+								</button>
 
-								<div className="flex items-center gap-1">
-									<button
-										onClick={() => handleView(syllabus.id)}
-										className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-									>
-										<Eye className="w-4 h-4" />
-									</button>
-									<button
-										onClick={() => handleDelete(syllabus.id)}
-										disabled={isPending}
-										className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
-									>
-										<Trash2 className="w-4 h-4" />
-									</button>
-								</div>
+								{/* Syllabi */}
+								{expandedGroups.has(key) && (
+									<div className="divide-y divide-white/5">
+										{group.items.map((syllabus) => (
+											<div
+												key={syllabus.id}
+												className="flex items-center justify-between p-4 hover:bg-white/[0.03]"
+											>
+												<div className="flex items-center gap-4">
+													<div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500/20 to-purple-500/20 flex items-center justify-center flex-shrink-0">
+														<FileText className="w-6 h-6 text-pink-400" />
+													</div>
+													<div>
+														<div className="flex items-center gap-2">
+															<span className="text-white font-medium">
+																{syllabus.subject.name}
+															</span>
+															<span className="badge-purple text-xs">
+																{syllabus.subject.code}
+															</span>
+														</div>
+														<div className="flex items-center gap-3 text-sm text-gray-500 mt-1">
+															<span className="badge-purple text-xs">
+																v{syllabus.version || "1.0"}
+															</span>
+															<span className="flex items-center gap-1">
+																<Layers className="w-3 h-3" />
+																{syllabus._count.modules} modules
+															</span>
+															<span>
+																Added{" "}
+																{new Date(
+																	syllabus.createdAt
+																).toLocaleDateString()}
+															</span>
+														</div>
+													</div>
+												</div>
+												<div className="flex items-center gap-1">
+													<button
+														onClick={() => handleView(syllabus.id)}
+														className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+													>
+														<Eye className="w-4 h-4" />
+													</button>
+													<button
+														onClick={() => handleDelete(syllabus.id)}
+														disabled={isPending}
+														className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+													>
+														<Trash2 className="w-4 h-4" />
+													</button>
+												</div>
+											</div>
+										))}
+									</div>
+								)}
 							</div>
-						</motion.div>
-					))}
+						))}
 				</motion.div>
 			)}
 
@@ -250,6 +378,12 @@ export default function SyllabiPage() {
 									</h2>
 									<p className="text-pink-400 text-sm">
 										{syllabusDetail.subject.code}
+									</p>
+									<p className="text-gray-500 text-xs mt-1">
+										{syllabusDetail.subject.semester.batch.course.code}{" "}
+										{syllabusDetail.subject.semester.batch.startYear}-
+										{syllabusDetail.subject.semester.batch.endYear} • Semester{" "}
+										{syllabusDetail.subject.semester.number}
 									</p>
 								</div>
 								<button
@@ -282,15 +416,15 @@ export default function SyllabiPage() {
 											>
 												<div className="flex items-center gap-3">
 													<span className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 text-sm font-semibold">
-														{module.moduleNumber}
+														{module.number}
 													</span>
 													<div className="text-left">
 														<p className="text-white font-medium">
-															{module.title}
+															{module.name}
 														</p>
 														<p className="text-gray-500 text-sm">
 															{module.topics?.length || 0} topics •{" "}
-															{module.lectureHours || 0} hours
+															{module.hours || 0} hours
 														</p>
 													</div>
 												</div>
@@ -308,7 +442,7 @@ export default function SyllabiPage() {
 													className="border-t border-white/10 bg-white/5"
 												>
 													<div className="p-4 space-y-3">
-														{module.topics?.map((topic: any, i: number) => (
+														{module.topics?.map((topic) => (
 															<div key={topic.id} className="pl-4">
 																<div className="flex items-center gap-2 text-gray-300">
 																	<span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
@@ -316,7 +450,7 @@ export default function SyllabiPage() {
 																</div>
 																{topic.subTopics?.length > 0 && (
 																	<div className="pl-6 mt-2 space-y-1">
-																		{topic.subTopics.map((sub: any) => (
+																		{topic.subTopics.map((sub) => (
 																			<div
 																				key={sub.id}
 																				className="text-sm text-gray-500 flex items-center gap-2"
@@ -346,7 +480,7 @@ export default function SyllabiPage() {
 									</h3>
 
 									<div className="space-y-2">
-										{syllabusDetail.books.map((book: any) => (
+										{syllabusDetail.books.map((book) => (
 											<div
 												key={book.id}
 												className="p-3 rounded-xl bg-white/5 border border-white/5"
@@ -358,12 +492,12 @@ export default function SyllabiPage() {
 												</p>
 												<span
 													className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full ${
-														book.type === "TEXTBOOK"
+														book.bookType === "TEXTBOOK"
 															? "bg-green-500/20 text-green-400"
 															: "bg-blue-500/20 text-blue-400"
 													}`}
 												>
-													{book.type}
+													{book.bookType}
 												</span>
 											</div>
 										))}

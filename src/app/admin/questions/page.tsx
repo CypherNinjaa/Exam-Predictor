@@ -9,14 +9,19 @@ import {
 	FileQuestion,
 	X,
 	Loader2,
-	Filter,
+	ChevronDown,
+	ChevronRight,
+	GraduationCap,
 } from "lucide-react";
 import {
 	getQuestions,
 	createQuestion,
 	deleteQuestion,
-	getDropdownData,
-	getExams,
+	getCourses,
+	getBatches,
+	getSemesters,
+	getSubjects,
+	getExamsForSubject,
 } from "../actions";
 
 interface Question {
@@ -24,101 +29,257 @@ interface Question {
 	text: string;
 	marks: number;
 	difficulty: string;
-	bloomsLevel: string;
-	questionNumber: string;
 	exam: {
 		id: string;
 		examType: string;
-		subjectOffering: {
-			subject: {
-				id: string;
-				code: string;
-				name: string;
+		subject: {
+			id: string;
+			code: string;
+			name: string;
+		};
+		semester: {
+			number: number;
+			batch: {
+				startYear: number;
+				endYear: number;
+				course: { code: string; name: string };
 			};
 		};
 	};
-	topic: {
-		id: string;
-		name: string;
-	} | null;
-	module: {
-		id: string;
-		name: string;
-		number: number;
-	} | null;
+	module: { number: number; name: string } | null;
+	topic: { name: string } | null;
 }
 
-interface DropdownData {
-	subjects: any[];
-	exams: any[];
-	topics: any[];
-	modules: any[];
-	subjectOfferings: any[];
-	semesters: any[];
+interface Course {
+	id: string;
+	code: string;
+	name: string;
+}
+
+interface Batch {
+	id: string;
+	startYear: number;
+	endYear: number;
+}
+
+interface Semester {
+	id: string;
+	number: number;
+}
+
+interface Subject {
+	id: string;
+	code: string;
+	name: string;
+}
+
+interface Exam {
+	id: string;
+	examType: string;
+	examDate: Date | null;
 }
 
 export default function QuestionsPage() {
 	const [questions, setQuestions] = useState<Question[]>([]);
-	const [exams, setExams] = useState<any[]>([]);
-	const [dropdownData, setDropdownData] = useState<DropdownData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [filterDifficulty, setFilterDifficulty] = useState<string>("");
-	const [filterSubject, setFilterSubject] = useState<string>("");
+	const [filterType, setFilterType] = useState<string>("");
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [isPending, startTransition] = useTransition();
 	const [error, setError] = useState("");
+
+	// Form data
+	const [courses, setCourses] = useState<Course[]>([]);
+	const [batches, setBatches] = useState<Batch[]>([]);
+	const [semesters, setSemesters] = useState<Semester[]>([]);
+	const [subjects, setSubjects] = useState<Subject[]>([]);
+	const [exams, setExams] = useState<Exam[]>([]);
+
+	// Form selections
+	const [selectedCourseId, setSelectedCourseId] = useState("");
+	const [selectedBatchId, setSelectedBatchId] = useState("");
+	const [selectedSemesterId, setSelectedSemesterId] = useState("");
+	const [selectedSubjectId, setSelectedSubjectId] = useState("");
+	const [selectedExamId, setSelectedExamId] = useState("");
+
+	// Expanded groups
+	const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
 	useEffect(() => {
 		fetchData();
 	}, []);
 
 	async function fetchData() {
-		const [questionsResult, dropdownResult, examsResult] = await Promise.all([
+		const [questionsResult, coursesResult] = await Promise.all([
 			getQuestions(),
-			getDropdownData(),
-			getExams(),
+			getCourses(),
 		]);
 
 		if (questionsResult.success && questionsResult.data) {
-			setQuestions(questionsResult.data);
+			setQuestions(questionsResult.data as Question[]);
 		}
-		if (dropdownResult.success && dropdownResult.data) {
-			setDropdownData(dropdownResult.data);
-		}
-		if (examsResult.success && examsResult.data) {
-			setExams(examsResult.data);
+		if (coursesResult.success && coursesResult.data) {
+			setCourses(coursesResult.data);
 		}
 		setLoading(false);
 	}
+
+	// Cascading dropdowns
+	useEffect(() => {
+		async function loadBatches() {
+			if (selectedCourseId) {
+				const result = await getBatches(selectedCourseId);
+				if (result.success && result.data) {
+					setBatches(result.data as Batch[]);
+				}
+			} else {
+				setBatches([]);
+			}
+			setSelectedBatchId("");
+			setSemesters([]);
+			setSelectedSemesterId("");
+			setSubjects([]);
+			setSelectedSubjectId("");
+			setExams([]);
+			setSelectedExamId("");
+		}
+		loadBatches();
+	}, [selectedCourseId]);
+
+	useEffect(() => {
+		async function loadSemesters() {
+			if (selectedBatchId) {
+				const result = await getSemesters(selectedBatchId);
+				if (result.success && result.data) {
+					setSemesters(result.data as Semester[]);
+				}
+			} else {
+				setSemesters([]);
+			}
+			setSelectedSemesterId("");
+			setSubjects([]);
+			setSelectedSubjectId("");
+			setExams([]);
+			setSelectedExamId("");
+		}
+		loadSemesters();
+	}, [selectedBatchId]);
+
+	useEffect(() => {
+		async function loadSubjects() {
+			if (selectedSemesterId) {
+				const result = await getSubjects(selectedSemesterId);
+				if (result.success && result.data) {
+					setSubjects(result.data as Subject[]);
+				}
+			} else {
+				setSubjects([]);
+			}
+			setSelectedSubjectId("");
+			setExams([]);
+			setSelectedExamId("");
+		}
+		loadSubjects();
+	}, [selectedSemesterId]);
+
+	useEffect(() => {
+		async function loadExams() {
+			if (selectedSubjectId) {
+				const result = await getExamsForSubject(selectedSubjectId);
+				if (result.success && result.data) {
+					setExams(result.data as Exam[]);
+				}
+			} else {
+				setExams([]);
+			}
+			setSelectedExamId("");
+		}
+		loadExams();
+	}, [selectedSubjectId]);
 
 	const filteredQuestions = questions.filter((q) => {
 		const matchesSearch = q.text
 			.toLowerCase()
 			.includes(searchQuery.toLowerCase());
-		const matchesDifficulty =
-			!filterDifficulty || q.difficulty === filterDifficulty;
-		const matchesSubject =
-			!filterSubject || q.exam?.subjectOffering?.subject?.id === filterSubject;
-		return matchesSearch && matchesDifficulty && matchesSubject;
+		const matchesDifficulty = !filterType || q.difficulty === filterType;
+		return matchesSearch && matchesDifficulty;
 	});
+
+	// Group by Course → Batch → Subject
+	const groupedQuestions = filteredQuestions.reduce(
+		(acc, question) => {
+			const exam = question.exam;
+			const course = exam.semester.batch.course;
+			const batch = exam.semester.batch;
+			const key = `${course.code}|${batch.startYear}-${batch.endYear}|${exam.subject.code}`;
+
+			if (!acc[key]) {
+				acc[key] = {
+					courseCode: course.code,
+					batchLabel: `${batch.startYear}-${batch.endYear}`,
+					subjectCode: exam.subject.code,
+					subjectName: exam.subject.name,
+					items: [],
+				};
+			}
+			acc[key].items.push(question);
+			return acc;
+		},
+		{} as Record<
+			string,
+			{
+				courseCode: string;
+				batchLabel: string;
+				subjectCode: string;
+				subjectName: string;
+				items: Question[];
+			}
+		>
+	);
+
+	function toggleGroup(key: string) {
+		setExpandedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				next.add(key);
+			}
+			return next;
+		});
+	}
 
 	async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
 		e.preventDefault();
 		setError("");
 
+		if (!selectedExamId) {
+			setError("Please select all required fields");
+			return;
+		}
+
 		const formData = new FormData(e.currentTarget);
+		formData.append("examId", selectedExamId);
 
 		startTransition(async () => {
 			const result = await createQuestion(formData);
 
 			if (result.success) {
 				setIsModalOpen(false);
+				resetForm();
 				fetchData();
 			} else {
 				setError(result.error || "Something went wrong");
 			}
 		});
+	}
+
+	function resetForm() {
+		setSelectedCourseId("");
+		setSelectedBatchId("");
+		setSelectedSemesterId("");
+		setSelectedSubjectId("");
+		setSelectedExamId("");
 	}
 
 	async function handleDelete(id: string) {
@@ -132,19 +293,30 @@ export default function QuestionsPage() {
 		});
 	}
 
-	const difficultyColors: Record<string, string> = {
-		EASY: "bg-green-500/20 text-green-400 border-green-500/30",
-		MEDIUM: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-		HARD: "bg-red-500/20 text-red-400 border-red-500/30",
+	const examTypeLabel = (type: string) => {
+		switch (type) {
+			case "MIDTERM_1":
+				return "Midterm 1";
+			case "MIDTERM_2":
+				return "Midterm 2";
+			case "END_TERM":
+				return "End Term";
+			default:
+				return type;
+		}
 	};
 
-	const bloomsColors: Record<string, string> = {
-		REMEMBER: "bg-blue-500/20 text-blue-400",
-		UNDERSTAND: "bg-cyan-500/20 text-cyan-400",
-		APPLY: "bg-green-500/20 text-green-400",
-		ANALYZE: "bg-purple-500/20 text-purple-400",
-		EVALUATE: "bg-pink-500/20 text-pink-400",
-		CREATE: "bg-orange-500/20 text-orange-400",
+	const difficultyLabel = (diff: string) => {
+		switch (diff) {
+			case "EASY":
+				return "Easy";
+			case "MEDIUM":
+				return "Medium";
+			case "HARD":
+				return "Hard";
+			default:
+				return diff;
+		}
 	};
 
 	return (
@@ -153,9 +325,7 @@ export default function QuestionsPage() {
 			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 				<div>
 					<h1 className="text-2xl font-bold text-white">Questions</h1>
-					<p className="text-gray-400 text-sm">
-						Manage exam questions in the database
-					</p>
+					<p className="text-gray-400 text-sm">Manage exam questions</p>
 				</div>
 
 				<motion.button
@@ -170,8 +340,8 @@ export default function QuestionsPage() {
 			</div>
 
 			{/* Filters */}
-			<div className="flex flex-col sm:flex-row gap-4">
-				<div className="relative flex-1">
+			<div className="flex flex-wrap gap-4">
+				<div className="relative flex-1 min-w-[200px]">
 					<Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
 					<input
 						type="text"
@@ -182,40 +352,25 @@ export default function QuestionsPage() {
 					/>
 				</div>
 
-				<div className="flex gap-3">
-					<select
-						value={filterDifficulty}
-						onChange={(e) => setFilterDifficulty(e.target.value)}
-						className="input w-40"
-					>
-						<option value="">All Difficulty</option>
-						<option value="EASY">Easy</option>
-						<option value="MEDIUM">Medium</option>
-						<option value="HARD">Hard</option>
-					</select>
-
-					<select
-						value={filterSubject}
-						onChange={(e) => setFilterSubject(e.target.value)}
-						className="input w-48"
-					>
-						<option value="">All Subjects</option>
-						{dropdownData?.subjects.map((s) => (
-							<option key={s.id} value={s.id}>
-								{s.code} - {s.name}
-							</option>
-						))}
-					</select>
-				</div>
+				<select
+					value={filterType}
+					onChange={(e) => setFilterType(e.target.value)}
+					className="select w-40"
+				>
+					<option value="">All Difficulty</option>
+					<option value="EASY">Easy</option>
+					<option value="MEDIUM">Medium</option>
+					<option value="HARD">Hard</option>
+				</select>
 			</div>
 
 			{/* Questions List */}
 			{loading ? (
 				<div className="space-y-4">
-					{[...Array(5)].map((_, i) => (
+					{[...Array(3)].map((_, i) => (
 						<div
 							key={i}
-							className="h-28 bg-white/5 rounded-2xl animate-pulse"
+							className="h-20 bg-white/5 rounded-2xl animate-pulse"
 						/>
 					))}
 				</div>
@@ -226,72 +381,94 @@ export default function QuestionsPage() {
 						No questions found
 					</h3>
 					<p className="text-gray-500 text-sm">
-						{searchQuery || filterDifficulty || filterSubject
-							? "Try different filters"
-							: "Add your first question to get started"}
+						Add your first question to get started
 					</p>
 				</div>
 			) : (
-				<motion.div
-					initial={{ opacity: 0 }}
-					animate={{ opacity: 1 }}
-					className="space-y-4"
-				>
-					{filteredQuestions.map((question, index) => (
-						<motion.div
-							key={question.id}
-							initial={{ opacity: 0, y: 20 }}
-							animate={{ opacity: 1, y: 0 }}
-							transition={{ delay: index * 0.03 }}
-							className="card card-hover p-5 group"
-						>
-							<div className="flex items-start justify-between gap-4">
-								<div className="flex-1">
-									<p className="text-white mb-3">{question.text}</p>
-
-									<div className="flex flex-wrap items-center gap-2">
-										<span className="badge-cyan text-xs">
-											{question.exam?.subjectOffering?.subject?.code || "N/A"}
-										</span>
-										<span
-											className={`badge text-xs border ${
-												difficultyColors[question.difficulty]
-											}`}
-										>
-											{question.difficulty}
-										</span>
-										<span
-											className={`badge text-xs ${
-												bloomsColors[question.bloomsLevel]
-											}`}
-										>
-											{question.bloomsLevel}
-										</span>
-										<span className="text-gray-500 text-xs">
-											{question.marks} marks
-										</span>
-										{question.topic && (
-											<span className="text-gray-500 text-xs">
-												• {question.topic.name}
-											</span>
-										)}
-									</div>
-								</div>
-
+				<div className="space-y-4">
+					{Object.entries(groupedQuestions)
+						.sort((a, b) => a[0].localeCompare(b[0]))
+						.map(([key, group]) => (
+							<div
+								key={key}
+								className="border border-white/10 rounded-xl overflow-hidden"
+							>
 								<button
-									onClick={() => handleDelete(question.id)}
-									disabled={isPending}
-									className="p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-all"
+									onClick={() => toggleGroup(key)}
+									className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-white/[0.08] transition-colors"
 								>
-									<Trash2 className="w-4 h-4" />
+									<div className="flex items-center gap-3">
+										{expandedGroups.has(key) ? (
+											<ChevronDown className="w-5 h-5 text-gray-400" />
+										) : (
+											<ChevronRight className="w-5 h-5 text-gray-400" />
+										)}
+										<div className="flex items-center gap-2">
+											<span className="badge-purple">{group.courseCode}</span>
+											<span className="text-white font-medium">
+												{group.batchLabel}
+											</span>
+											<span className="text-gray-400">•</span>
+											<span className="text-cyan-400">{group.subjectCode}</span>
+											<span className="text-gray-300">{group.subjectName}</span>
+										</div>
+									</div>
+									<span className="text-gray-500 text-sm">
+										{group.items.length} questions
+									</span>
 								</button>
+
+								{expandedGroups.has(key) && (
+									<div className="divide-y divide-white/5">
+										{group.items.map((question) => (
+											<div
+												key={question.id}
+												className="flex items-start justify-between p-4 hover:bg-white/[0.03]"
+											>
+												<div className="flex items-start gap-4">
+													<div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-blue-500/20 flex items-center justify-center flex-shrink-0">
+														<FileQuestion className="w-5 h-5 text-cyan-400" />
+													</div>
+													<div>
+														<p className="text-white">{question.text}</p>
+														<div className="flex items-center gap-3 text-sm text-gray-500 mt-2 flex-wrap">
+															<span className="badge-purple text-xs">
+																{examTypeLabel(question.exam.examType)}
+															</span>
+															<span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full text-xs">
+																{difficultyLabel(question.difficulty)}
+															</span>
+															<span>{question.marks} marks</span>
+															{question.module && (
+																<span className="text-amber-400">
+																	Module {question.module.number}
+																</span>
+															)}
+															{question.topic && (
+																<span className="text-purple-400">
+																	{question.topic.name}
+																</span>
+															)}
+														</div>
+													</div>
+												</div>
+												<button
+													onClick={() => handleDelete(question.id)}
+													disabled={isPending}
+													className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors flex-shrink-0"
+												>
+													<Trash2 className="w-4 h-4" />
+												</button>
+											</div>
+										))}
+									</div>
+								)}
 							</div>
-						</motion.div>
-					))}
-				</motion.div>
+						))}
+				</div>
 			)}
 
-			{/* Add Question Modal */}
+			{/* Modal */}
 			<AnimatePresence>
 				{isModalOpen && (
 					<motion.div
@@ -306,7 +483,7 @@ export default function QuestionsPage() {
 							animate={{ opacity: 1, scale: 1 }}
 							exit={{ opacity: 0, scale: 0.95 }}
 							onClick={(e) => e.stopPropagation()}
-							className="bg-[#0f0f23] border border-white/10 rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto"
+							className="bg-[#0f0f23] border border-white/10 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
 						>
 							<div className="flex items-center justify-between mb-6">
 								<h2 className="text-xl font-semibold text-white">
@@ -327,57 +504,83 @@ export default function QuestionsPage() {
 							)}
 
 							<form onSubmit={handleSubmit} className="space-y-4">
+								{/* Course → Batch → Semester → Subject → Exam cascading */}
 								<div>
 									<label className="block text-sm font-medium text-gray-300 mb-2">
-										Question Text *
+										Course *
 									</label>
-									<textarea
-										name="text"
-										placeholder="Enter the question..."
+									<select
+										value={selectedCourseId}
+										onChange={(e) => setSelectedCourseId(e.target.value)}
+										className="select w-full"
 										required
-										rows={4}
-										className="input w-full resize-none"
-									/>
-								</div>
-
-								<div className="grid grid-cols-2 gap-4">
-									<div>
-										<label className="block text-sm font-medium text-gray-300 mb-2">
-											Marks *
-										</label>
-										<input
-											type="number"
-											name="marks"
-											defaultValue={5}
-											min={1}
-											required
-											className="input w-full"
-										/>
-									</div>
-
-									<div>
-										<label className="block text-sm font-medium text-gray-300 mb-2">
-											Difficulty *
-										</label>
-										<select name="difficulty" required className="input w-full">
-											<option value="EASY">Easy</option>
-											<option value="MEDIUM">Medium</option>
-											<option value="HARD">Hard</option>
-										</select>
-									</div>
+									>
+										<option value="">Select Course</option>
+										{courses.map((c) => (
+											<option key={c.id} value={c.id}>
+												{c.code} - {c.name}
+											</option>
+										))}
+									</select>
 								</div>
 
 								<div>
 									<label className="block text-sm font-medium text-gray-300 mb-2">
-										Bloom's Level *
+										Batch *
 									</label>
-									<select name="bloomsLevel" required className="input w-full">
-										<option value="REMEMBER">Remember</option>
-										<option value="UNDERSTAND">Understand</option>
-										<option value="APPLY">Apply</option>
-										<option value="ANALYZE">Analyze</option>
-										<option value="EVALUATE">Evaluate</option>
-										<option value="CREATE">Create</option>
+									<select
+										value={selectedBatchId}
+										onChange={(e) => setSelectedBatchId(e.target.value)}
+										className="select w-full"
+										disabled={!selectedCourseId}
+										required
+									>
+										<option value="">Select Batch</option>
+										{batches.map((b) => (
+											<option key={b.id} value={b.id}>
+												{b.startYear} - {b.endYear}
+											</option>
+										))}
+									</select>
+								</div>
+
+								<div>
+									<label className="block text-sm font-medium text-gray-300 mb-2">
+										Semester *
+									</label>
+									<select
+										value={selectedSemesterId}
+										onChange={(e) => setSelectedSemesterId(e.target.value)}
+										className="select w-full"
+										disabled={!selectedBatchId}
+										required
+									>
+										<option value="">Select Semester</option>
+										{semesters.map((s) => (
+											<option key={s.id} value={s.id}>
+												Semester {s.number}
+											</option>
+										))}
+									</select>
+								</div>
+
+								<div>
+									<label className="block text-sm font-medium text-gray-300 mb-2">
+										Subject *
+									</label>
+									<select
+										value={selectedSubjectId}
+										onChange={(e) => setSelectedSubjectId(e.target.value)}
+										className="select w-full"
+										disabled={!selectedSemesterId}
+										required
+									>
+										<option value="">Select Subject</option>
+										{subjects.map((s) => (
+											<option key={s.id} value={s.id}>
+												{s.code} - {s.name}
+											</option>
+										))}
 									</select>
 								</div>
 
@@ -385,16 +588,19 @@ export default function QuestionsPage() {
 									<label className="block text-sm font-medium text-gray-300 mb-2">
 										Exam *
 									</label>
-									<select name="examId" required className="input w-full">
-										<option value="">Select an exam</option>
-										{exams.map((exam) => (
-											<option key={exam.id} value={exam.id}>
-												{exam.subjectOffering?.subject?.code} -{" "}
-												{exam.examType.replace("_", " ")} (
-												{exam.examDate
-													? new Date(exam.examDate).toLocaleDateString()
-													: "No date"}
-												)
+									<select
+										value={selectedExamId}
+										onChange={(e) => setSelectedExamId(e.target.value)}
+										className="select w-full"
+										disabled={!selectedSubjectId}
+										required
+									>
+										<option value="">Select Exam</option>
+										{exams.map((e) => (
+											<option key={e.id} value={e.id}>
+												{examTypeLabel(e.examType)}
+												{e.examDate &&
+													` - ${new Date(e.examDate).toLocaleDateString()}`}
 											</option>
 										))}
 									</select>
@@ -402,16 +608,28 @@ export default function QuestionsPage() {
 
 								<div>
 									<label className="block text-sm font-medium text-gray-300 mb-2">
-										Topic (Optional)
+										Question Text *
 									</label>
-									<select name="topicId" className="input w-full">
-										<option value="">Select a topic</option>
-										{dropdownData?.topics.map((topic) => (
-											<option key={topic.id} value={topic.id}>
-												{topic.name}
-											</option>
-										))}
-									</select>
+									<textarea
+										name="text"
+										rows={3}
+										required
+										className="input w-full resize-none"
+										placeholder="Enter the question..."
+									/>
+								</div>
+
+								<div>
+									<label className="block text-sm font-medium text-gray-300 mb-2">
+										Marks *
+									</label>
+									<input
+										type="number"
+										name="marks"
+										min={1}
+										required
+										className="input w-full"
+									/>
 								</div>
 
 								<div className="flex items-center gap-3 pt-4">

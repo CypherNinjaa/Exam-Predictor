@@ -54,6 +54,101 @@
 	.section-padding {
 		@apply py-16 md:py-24;
 	}
+
+	/* Form Inputs - Dark Theme */
+	.input {
+		@apply w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500;
+		@apply focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20;
+		@apply transition-all duration-200;
+	}
+
+	.input:disabled {
+		@apply opacity-50 cursor-not-allowed;
+	}
+
+	/* Buttons */
+	.btn-primary {
+		@apply px-5 py-2.5 rounded-xl font-medium text-white;
+		@apply bg-gradient-to-r from-violet-600 to-purple-600;
+		@apply hover:from-violet-500 hover:to-purple-500;
+		@apply focus:outline-none focus:ring-2 focus:ring-violet-500/50;
+		@apply transition-all duration-200;
+		@apply disabled:opacity-50 disabled:cursor-not-allowed;
+	}
+
+	.btn-secondary {
+		@apply px-5 py-2.5 rounded-xl font-medium;
+		@apply bg-white/5 border border-white/10 text-gray-300;
+		@apply hover:bg-white/10 hover:text-white;
+		@apply focus:outline-none focus:ring-2 focus:ring-white/20;
+		@apply transition-all duration-200;
+		@apply disabled:opacity-50 disabled:cursor-not-allowed;
+	}
+
+	.btn-ghost {
+		@apply px-4 py-2 rounded-lg font-medium text-gray-400;
+		@apply hover:bg-white/5 hover:text-white;
+		@apply transition-all duration-200;
+	}
+
+	.btn-danger {
+		@apply px-5 py-2.5 rounded-xl font-medium text-white;
+		@apply bg-red-600 hover:bg-red-500;
+		@apply focus:outline-none focus:ring-2 focus:ring-red-500/50;
+		@apply transition-all duration-200;
+	}
+
+	/* Cards */
+	.card {
+		@apply bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm;
+	}
+
+	.card-hover {
+		@apply hover:bg-white/[0.08] hover:border-white/20 transition-all duration-200;
+	}
+
+	/* Badges */
+	.badge-purple {
+		@apply px-2.5 py-1 rounded-lg text-xs font-medium bg-violet-500/20 text-violet-300;
+	}
+
+	.badge-green {
+		@apply px-2.5 py-1 rounded-lg text-xs font-medium bg-green-500/20 text-green-300;
+	}
+
+	.badge-red {
+		@apply px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/20 text-red-300;
+	}
+
+	.badge-yellow {
+		@apply px-2.5 py-1 rounded-lg text-xs font-medium bg-yellow-500/20 text-yellow-300;
+	}
+
+	.badge-blue {
+		@apply px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500/20 text-blue-300;
+	}
+
+	/* Select/Dropdown */
+	.select {
+		@apply w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white;
+		@apply focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20;
+		@apply transition-all duration-200 appearance-none cursor-pointer;
+		background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+		background-position: right 0.75rem center;
+		background-repeat: no-repeat;
+		background-size: 1.5em 1.5em;
+	}
+
+	.select option {
+		@apply bg-[#0f0f23] text-white;
+	}
+
+	/* Textarea */
+	.textarea {
+		@apply w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500;
+		@apply focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20;
+		@apply transition-all duration-200 resize-none;
+	}
 }
 
 @layer utilities {

@@ -4,32 +4,236 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-// ============ SUBJECT ACTIONS ============
+// ============ COLLEGE ACTIONS ============
 
-const SubjectSchema = z.object({
-	code: z.string().min(1, "Subject code is required"),
-	name: z.string().min(1, "Subject name is required"),
-	credits: z.coerce.number().min(1).max(10),
-});
+export async function getCollege() {
+	try {
+		const college = await prisma.college.findFirst();
+		return { success: true, data: college };
+	} catch (error) {
+		console.error("Error fetching college:", error);
+		return { success: false, error: "Failed to fetch college" };
+	}
+}
 
-export async function getSubjects() {
+export async function updateCollege(formData: FormData) {
+	try {
+		const name = formData.get("name") as string;
+		const code = formData.get("code") as string;
+		const location = formData.get("location") as string;
+
+		let college = await prisma.college.findFirst();
+
+		if (college) {
+			college = await prisma.college.update({
+				where: { id: college.id },
+				data: { name, code, location },
+			});
+		} else {
+			college = await prisma.college.create({
+				data: { name, code, location },
+			});
+		}
+
+		revalidatePath("/admin/settings");
+		return { success: true, data: college };
+	} catch (error) {
+		console.error("Error updating college:", error);
+		return { success: false, error: "Failed to update college" };
+	}
+}
+
+// ============ COURSE ACTIONS ============
+
+export async function getCourses() {
 	try {
 		const college = await prisma.college.findFirst();
 		if (!college) {
 			return { success: true, data: [] };
 		}
 
-		const subjects = await prisma.subject.findMany({
+		const courses = await prisma.course.findMany({
 			where: { collegeId: college.id },
 			include: {
 				_count: {
-					select: {
-						syllabi: true,
-						offerings: true,
-					},
+					select: { batches: true },
 				},
 			},
-			orderBy: { createdAt: "desc" },
+			orderBy: { name: "asc" },
+		});
+		return { success: true, data: courses };
+	} catch (error) {
+		console.error("Error fetching courses:", error);
+		return { success: false, error: "Failed to fetch courses", data: [] };
+	}
+}
+
+export async function createCourse(formData: FormData) {
+	try {
+		const name = formData.get("name") as string;
+		const code = formData.get("code") as string;
+		const duration = parseInt(formData.get("duration") as string);
+		const description = formData.get("description") as string;
+
+		let college = await prisma.college.findFirst();
+		if (!college) {
+			college = await prisma.college.create({
+				data: {
+					name: "Amity University Patna",
+					code: "AUP",
+					location: "Patna, Bihar",
+				},
+			});
+		}
+
+		const course = await prisma.course.create({
+			data: {
+				name,
+				code,
+				duration,
+				description,
+				collegeId: college.id,
+			},
+		});
+
+		revalidatePath("/admin/settings");
+		return { success: true, data: course };
+	} catch (error) {
+		console.error("Error creating course:", error);
+		return { success: false, error: "Failed to create course" };
+	}
+}
+
+export async function deleteCourse(id: string) {
+	try {
+		await prisma.course.delete({ where: { id } });
+		revalidatePath("/admin/settings");
+		return { success: true };
+	} catch (error) {
+		console.error("Error deleting course:", error);
+		return { success: false, error: "Failed to delete course" };
+	}
+}
+
+// ============ BATCH ACTIONS ============
+
+export async function getBatches(courseId?: string) {
+	try {
+		const batches = await prisma.batch.findMany({
+			where: courseId ? { courseId } : undefined,
+			include: {
+				course: true,
+				_count: {
+					select: { semesters: true },
+				},
+			},
+			orderBy: { startYear: "desc" },
+		});
+		return { success: true, data: batches };
+	} catch (error) {
+		console.error("Error fetching batches:", error);
+		return { success: false, error: "Failed to fetch batches", data: [] };
+	}
+}
+
+export async function createBatch(courseId: string, startYear: number) {
+	try {
+		const course = await prisma.course.findUnique({ where: { id: courseId } });
+		if (!course) {
+			return { success: false, error: "Course not found" };
+		}
+
+		const endYear = startYear + course.duration;
+		const totalSemesters = course.duration * 2;
+
+		// Create batch
+		const batch = await prisma.batch.create({
+			data: {
+				startYear,
+				endYear,
+				courseId,
+				isActive: true,
+			},
+		});
+
+		// Auto-create all semesters
+		for (let sem = 1; sem <= totalSemesters; sem++) {
+			await prisma.semester.create({
+				data: {
+					number: sem,
+					batchId: batch.id,
+				},
+			});
+		}
+
+		revalidatePath("/admin/settings");
+		return { success: true, data: batch };
+	} catch (error) {
+		console.error("Error creating batch:", error);
+		return { success: false, error: "Failed to create batch" };
+	}
+}
+
+export async function deleteBatch(id: string) {
+	try {
+		await prisma.batch.delete({ where: { id } });
+		revalidatePath("/admin/settings");
+		return { success: true };
+	} catch (error) {
+		console.error("Error deleting batch:", error);
+		return { success: false, error: "Failed to delete batch" };
+	}
+}
+
+// ============ SEMESTER ACTIONS ============
+
+export async function getSemesters(batchId: string) {
+	try {
+		const semesters = await prisma.semester.findMany({
+			where: { batchId },
+			include: {
+				_count: {
+					select: { subjects: true, exams: true },
+				},
+			},
+			orderBy: { number: "asc" },
+		});
+		return { success: true, data: semesters };
+	} catch (error) {
+		console.error("Error fetching semesters:", error);
+		return { success: false, error: "Failed to fetch semesters", data: [] };
+	}
+}
+
+// ============ SUBJECT ACTIONS ============
+
+const SubjectSchema = z.object({
+	code: z.string().min(1, "Subject code is required"),
+	name: z.string().min(1, "Subject name is required"),
+	credits: z.coerce.number().min(1).max(10),
+	semesterId: z.string().min(1, "Semester is required"),
+});
+
+export async function getSubjects(semesterId?: string) {
+	try {
+		const subjects = await prisma.subject.findMany({
+			where: semesterId ? { semesterId } : undefined,
+			include: {
+				semester: {
+					include: {
+						batch: {
+							include: {
+								course: true,
+							},
+						},
+					},
+				},
+				syllabus: true,
+				_count: {
+					select: { exams: true },
+				},
+			},
+			orderBy: { code: "asc" },
 		});
 		return { success: true, data: subjects };
 	} catch (error) {
@@ -44,26 +248,15 @@ export async function createSubject(formData: FormData) {
 			code: formData.get("code"),
 			name: formData.get("name"),
 			credits: formData.get("credits"),
+			semesterId: formData.get("semesterId"),
 		});
-
-		// Get or create default college
-		let college = await prisma.college.findFirst();
-		if (!college) {
-			college = await prisma.college.create({
-				data: {
-					name: "Amity University Patna",
-					code: "AUP",
-					location: "Patna, Bihar",
-				},
-			});
-		}
 
 		const subject = await prisma.subject.create({
 			data: {
 				code: data.code,
 				name: data.name,
 				credits: data.credits,
-				collegeId: college.id,
+				semesterId: data.semesterId,
 			},
 		});
 
@@ -80,27 +273,18 @@ export async function createSubject(formData: FormData) {
 
 export async function updateSubject(id: string, formData: FormData) {
 	try {
-		const data = SubjectSchema.parse({
-			code: formData.get("code"),
-			name: formData.get("name"),
-			credits: formData.get("credits"),
-		});
+		const code = formData.get("code") as string;
+		const name = formData.get("name") as string;
+		const credits = parseInt(formData.get("credits") as string);
 
 		const subject = await prisma.subject.update({
 			where: { id },
-			data: {
-				code: data.code,
-				name: data.name,
-				credits: data.credits,
-			},
+			data: { code, name, credits },
 		});
 
 		revalidatePath("/admin/subjects");
 		return { success: true, data: subject };
 	} catch (error) {
-		if (error instanceof z.ZodError) {
-			return { success: false, error: error.errors[0].message };
-		}
 		console.error("Error updating subject:", error);
 		return { success: false, error: "Failed to update subject" };
 	}
@@ -108,10 +292,7 @@ export async function updateSubject(id: string, formData: FormData) {
 
 export async function deleteSubject(id: string) {
 	try {
-		await prisma.subject.delete({
-			where: { id },
-		});
-
+		await prisma.subject.delete({ where: { id } });
 		revalidatePath("/admin/subjects");
 		return { success: true };
 	} catch (error) {
@@ -126,7 +307,19 @@ export async function getSyllabi() {
 	try {
 		const syllabi = await prisma.syllabus.findMany({
 			include: {
-				subject: true,
+				subject: {
+					include: {
+						semester: {
+							include: {
+								batch: {
+									include: {
+										course: true,
+									},
+								},
+							},
+						},
+					},
+				},
 				modules: {
 					include: {
 						topics: true,
@@ -150,7 +343,19 @@ export async function getSyllabusById(id: string) {
 		const syllabus = await prisma.syllabus.findUnique({
 			where: { id },
 			include: {
-				subject: true,
+				subject: {
+					include: {
+						semester: {
+							include: {
+								batch: {
+									include: {
+										course: true,
+									},
+								},
+							},
+						},
+					},
+				},
 				modules: {
 					include: {
 						topics: {
@@ -174,10 +379,7 @@ export async function getSyllabusById(id: string) {
 
 export async function deleteSyllabus(id: string) {
 	try {
-		await prisma.syllabus.delete({
-			where: { id },
-		});
-
+		await prisma.syllabus.delete({ where: { id } });
 		revalidatePath("/admin/syllabi");
 		return { success: true };
 	} catch (error) {
@@ -194,9 +396,14 @@ export async function getQuestions() {
 			include: {
 				exam: {
 					include: {
-						subjectOffering: {
+						subject: true,
+						semester: {
 							include: {
-								subject: true,
+								batch: {
+									include: {
+										course: true,
+									},
+								},
 							},
 						},
 					},
@@ -214,46 +421,32 @@ export async function getQuestions() {
 }
 
 const QuestionSchema = z.object({
-	questionNumber: z.string().min(1, "Question number is required"),
 	text: z.string().min(1, "Question text is required"),
 	marks: z.coerce.number().min(1),
-	difficulty: z.enum(["EASY", "MEDIUM", "HARD"]),
-	bloomsLevel: z.enum([
-		"REMEMBER",
-		"UNDERSTAND",
-		"APPLY",
-		"ANALYZE",
-		"EVALUATE",
-		"CREATE",
-	]),
 	examId: z.string().min(1, "Exam is required"),
-	topicId: z.string().optional(),
-	moduleId: z.string().optional(),
 });
 
 export async function createQuestion(formData: FormData) {
 	try {
 		const data = QuestionSchema.parse({
-			questionNumber: formData.get("questionNumber"),
 			text: formData.get("text"),
 			marks: formData.get("marks"),
-			difficulty: formData.get("difficulty"),
-			bloomsLevel: formData.get("bloomsLevel"),
 			examId: formData.get("examId"),
-			topicId: formData.get("topicId"),
-			moduleId: formData.get("moduleId"),
+		});
+
+		// Generate question number
+		const existingCount = await prisma.question.count({
+			where: { examId: data.examId },
 		});
 
 		const question = await prisma.question.create({
 			data: {
-				questionNumber: data.questionNumber,
+				questionNumber: `Q${existingCount + 1}`,
 				text: data.text,
 				marks: data.marks,
-				difficulty: data.difficulty,
-				bloomsLevel: data.bloomsLevel,
+				difficulty: "MEDIUM",
+				bloomsLevel: "UNDERSTAND",
 				examId: data.examId,
-				topicId: data.topicId || null,
-				moduleId: data.moduleId || null,
 			},
 		});
 
@@ -270,10 +463,7 @@ export async function createQuestion(formData: FormData) {
 
 export async function deleteQuestion(id: string) {
 	try {
-		await prisma.question.delete({
-			where: { id },
-		});
-
+		await prisma.question.delete({ where: { id } });
 		revalidatePath("/admin/questions");
 		return { success: true };
 	} catch (error) {
@@ -288,12 +478,16 @@ export async function getExams() {
 	try {
 		const exams = await prisma.exam.findMany({
 			include: {
-				subjectOffering: {
+				subject: true,
+				semester: {
 					include: {
-						subject: true,
+						batch: {
+							include: {
+								course: true,
+							},
+						},
 					},
 				},
-				semester: true,
 				_count: {
 					select: { questions: true },
 				},
@@ -307,30 +501,43 @@ export async function getExams() {
 	}
 }
 
+export async function getExamsForSubject(subjectId: string) {
+	try {
+		const exams = await prisma.exam.findMany({
+			where: { subjectId },
+			orderBy: { examDate: "desc" },
+		});
+		return { success: true, data: exams };
+	} catch (error) {
+		console.error("Error fetching exams for subject:", error);
+		return { success: false, error: "Failed to fetch exams", data: [] };
+	}
+}
+
 const ExamSchema = z.object({
-	type: z.enum(["MIDTERM_1", "MIDTERM_2", "END_TERM"]),
-	date: z.string().min(1, "Date is required"),
+	examType: z.enum(["MIDTERM_1", "MIDTERM_2", "END_TERM"]),
+	date: z.string().optional(),
 	totalMarks: z.coerce.number().min(1),
-	subjectOfferingId: z.string().min(1, "Subject offering is required"),
+	subjectId: z.string().min(1, "Subject is required"),
 	semesterId: z.string().min(1, "Semester is required"),
 });
 
 export async function createExam(formData: FormData) {
 	try {
 		const data = ExamSchema.parse({
-			type: formData.get("type"),
+			examType: formData.get("examType"),
 			date: formData.get("date"),
 			totalMarks: formData.get("totalMarks"),
-			subjectOfferingId: formData.get("subjectOfferingId"),
+			subjectId: formData.get("subjectId"),
 			semesterId: formData.get("semesterId"),
 		});
 
 		const exam = await prisma.exam.create({
 			data: {
-				examType: data.type,
-				examDate: new Date(data.date),
+				examType: data.examType,
+				examDate: data.date ? new Date(data.date) : null,
 				totalMarks: data.totalMarks,
-				subjectOfferingId: data.subjectOfferingId,
+				subjectId: data.subjectId,
 				semesterId: data.semesterId,
 			},
 		});
@@ -348,10 +555,7 @@ export async function createExam(formData: FormData) {
 
 export async function deleteExam(id: string) {
 	try {
-		await prisma.exam.delete({
-			where: { id },
-		});
-
+		await prisma.exam.delete({ where: { id } });
 		revalidatePath("/admin/exams");
 		return { success: true };
 	} catch (error) {
@@ -365,30 +569,30 @@ export async function deleteExam(id: string) {
 export async function getAdminStats() {
 	try {
 		const [
+			coursesCount,
+			batchesCount,
 			subjectsCount,
 			syllabiCount,
 			questionsCount,
 			examsCount,
-			modulesCount,
-			topicsCount,
 		] = await Promise.all([
+			prisma.course.count(),
+			prisma.batch.count(),
 			prisma.subject.count(),
 			prisma.syllabus.count(),
 			prisma.question.count(),
 			prisma.exam.count(),
-			prisma.module.count(),
-			prisma.topic.count(),
 		]);
 
 		return {
 			success: true,
 			data: {
+				courses: coursesCount,
+				batches: batchesCount,
 				subjects: subjectsCount,
 				syllabi: syllabiCount,
 				questions: questionsCount,
 				exams: examsCount,
-				modules: modulesCount,
-				topics: topicsCount,
 			},
 		};
 	} catch (error) {
@@ -397,12 +601,12 @@ export async function getAdminStats() {
 			success: false,
 			error: "Failed to fetch stats",
 			data: {
+				courses: 0,
+				batches: 0,
 				subjects: 0,
 				syllabi: 0,
 				questions: 0,
 				exams: 0,
-				modules: 0,
-				topics: 0,
 			},
 		};
 	}
@@ -412,38 +616,41 @@ export async function getAdminStats() {
 
 export async function getDropdownData() {
 	try {
-		const [subjects, exams, topics, modules, subjectOfferings, semesters] =
-			await Promise.all([
-				prisma.subject.findMany({ orderBy: { name: "asc" } }),
-				prisma.exam.findMany({
-					include: {
-						subjectOffering: {
-							include: { subject: true },
+		const [courses, batches, semesters, subjects, exams] = await Promise.all([
+			prisma.course.findMany({ orderBy: { name: "asc" } }),
+			prisma.batch.findMany({
+				include: { course: true },
+				orderBy: { startYear: "desc" },
+			}),
+			prisma.semester.findMany({
+				include: {
+					batch: {
+						include: { course: true },
+					},
+				},
+				orderBy: { number: "asc" },
+			}),
+			prisma.subject.findMany({
+				include: {
+					semester: {
+						include: {
+							batch: {
+								include: { course: true },
+							},
 						},
 					},
-					orderBy: { createdAt: "desc" },
-				}),
-				prisma.topic.findMany({
-					include: { module: { include: { syllabus: true } } },
-					orderBy: { name: "asc" },
-				}),
-				prisma.module.findMany({
-					include: { syllabus: { include: { subject: true } } },
-					orderBy: { name: "asc" },
-				}),
-				prisma.subjectOffering.findMany({
-					include: { subject: true, semester: true },
-					orderBy: { createdAt: "desc" },
-				}),
-				prisma.semester.findMany({
-					include: { academicYear: true },
-					orderBy: { number: "asc" },
-				}),
-			]);
+				},
+				orderBy: { code: "asc" },
+			}),
+			prisma.exam.findMany({
+				include: { subject: true },
+				orderBy: { createdAt: "desc" },
+			}),
+		]);
 
 		return {
 			success: true,
-			data: { subjects, exams, topics, modules, subjectOfferings, semesters },
+			data: { courses, batches, semesters, subjects, exams },
 		};
 	} catch (error) {
 		console.error("Error fetching dropdown data:", error);

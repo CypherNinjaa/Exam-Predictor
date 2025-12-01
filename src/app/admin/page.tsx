@@ -16,12 +16,12 @@ import { getAdminStats } from "./actions";
 import Link from "next/link";
 
 interface Stats {
+	courses: number;
+	batches: number;
 	subjects: number;
 	syllabi: number;
 	questions: number;
 	exams: number;
-	modules: number;
-	topics: number;
 }
 
 export default function AdminDashboard() {
@@ -41,46 +41,46 @@ export default function AdminDashboard() {
 
 	const statCards = [
 		{
-			label: "Total Subjects",
+			label: "Courses",
+			value: stats?.courses || 0,
+			icon: GraduationCap,
+			color: "purple",
+			href: "/admin/settings",
+		},
+		{
+			label: "Batches",
+			value: stats?.batches || 0,
+			icon: Layers,
+			color: "amber",
+			href: "/admin/settings",
+		},
+		{
+			label: "Subjects",
 			value: stats?.subjects || 0,
 			icon: BookOpen,
-			color: "purple",
+			color: "pink",
 			href: "/admin/subjects",
 		},
 		{
 			label: "Syllabi",
 			value: stats?.syllabi || 0,
 			icon: FileText,
-			color: "pink",
+			color: "cyan",
 			href: "/admin/syllabi",
+		},
+		{
+			label: "Exams",
+			value: stats?.exams || 0,
+			icon: Target,
+			color: "green",
+			href: "/admin/exams",
 		},
 		{
 			label: "Questions",
 			value: stats?.questions || 0,
 			icon: FileQuestion,
-			color: "cyan",
-			href: "/admin/questions",
-		},
-		{
-			label: "Exams",
-			value: stats?.exams || 0,
-			icon: GraduationCap,
-			color: "amber",
-			href: "/admin/exams",
-		},
-		{
-			label: "Modules",
-			value: stats?.modules || 0,
-			icon: Layers,
-			color: "green",
-			href: "/admin/syllabi",
-		},
-		{
-			label: "Topics",
-			value: stats?.topics || 0,
-			icon: Target,
 			color: "orange",
-			href: "/admin/syllabi",
+			href: "/admin/questions",
 		},
 	];
 

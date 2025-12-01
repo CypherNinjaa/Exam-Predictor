@@ -1,6 +1,9 @@
 // ===========================================
 // PRISMA SCHEMA - AI EXAM PREDICTOR
-// Amity University Patna Data Structure
+// Amity University Patna
+// ===========================================
+// Structure: College -> Course -> Batch -> Semester -> Subject
+// Example: AUP -> BCA -> 2024-2027 -> Sem 1 -> DBMS
 // ===========================================
 
 generator client {
@@ -23,101 +26,107 @@ model College {
   updatedAt DateTime @updatedAt
 
   // Relations
-  years    AcademicYear[]
-  subjects Subject[]
+  courses Course[]
 }
 
-model AcademicYear {
-  id        String   @id @default(cuid())
-  year      Int // 2024, 2025
-  collegeId String
-  createdAt DateTime @default(now())
+// Course = Degree Program (BCA, BTech CSE, MBA, etc.)
+model Course {
+  id          String   @id @default(cuid())
+  name        String // "Bachelor of Computer Applications"
+  code        String // "BCA"
+  duration    Int      @default(3) // Years (3 for BCA, 4 for BTech)
+  collegeId   String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  college   College    @relation(fields: [collegeId], references: [id], onDelete: Cascade)
-  semesters Semester[]
-
-  @@unique([collegeId, year])
-}
-
-model Semester {
-  id             String    @id @default(cuid())
-  number         Int // 1-8
-  academicYearId String
-  startDate      DateTime?
-  endDate        DateTime?
-  createdAt      DateTime  @default(now())
-
-  // Relations
-  academicYear  AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  subjectOffers SubjectOffering[]
-  exams         Exam[]
-
-  @@unique([academicYearId, number])
-}
-
-model Subject {
-  id        String   @id @default(cuid())
-  code      String // "CSE301"
-  name      String // "Computer Networks"
-  credits   Int      @default(3)
-  collegeId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  college   College           @relation(fields: [collegeId], references: [id], onDelete: Cascade)
-  offerings SubjectOffering[]
-  syllabi   Syllabus[]
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  batches Batch[]
 
   @@unique([collegeId, code])
 }
 
-model SubjectOffering {
-  id         String   @id @default(cuid())
-  subjectId  String
-  semesterId String
-  createdAt  DateTime @default(now())
+// Batch = A group of students starting in a specific year
+// Example: BCA 2024-2027, BTech 2024-2028
+model Batch {
+  id        String   @id @default(cuid())
+  startYear Int // 2024
+  endYear   Int // 2027 for 3yr course, 2028 for 4yr
+  courseId  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
   // Relations
-  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  semester Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semesters Semester[]
+
+  @@unique([courseId, startYear])
+}
+
+// Semester within a batch
+// BCA 2024-2027 will have Sem 1-6 (3 years x 2 semesters)
+// BTech 2024-2028 will have Sem 1-8 (4 years x 2 semesters)
+model Semester {
+  id        String   @id @default(cuid())
+  number    Int // 1, 2, 3... (1-6 for 3yr, 1-8 for 4yr)
+  batchId   String
+  createdAt DateTime @default(now())
+
+  // Relations
+  batch    Batch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  subjects Subject[]
   exams    Exam[]
 
-  @@unique([subjectId, semesterId])
+  @@unique([batchId, number])
+}
+
+// Subject belongs to a specific semester of a batch
+// This allows different batches to have different subjects
+model Subject {
+  id         String   @id @default(cuid())
+  code       String // "BCA301"
+  name       String // "Database Management Systems"
+  credits    Int      @default(3)
+  semesterId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  semester Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  syllabus Syllabus?
+  exams    Exam[]
+
+  @@unique([semesterId, code])
 }
 
 // ==================== SYLLABUS ====================
 
 model Syllabus {
   id          String   @id @default(cuid())
-  subjectId   String
-  version     String   @default("1.0") // Syllabus can change yearly
-  year        Int // Which year this syllabus is for (2024, 2025)
-  semester    Int? // Which semester (1-8)
+  subjectId   String   @unique
+  version     String   @default("1.0")
   description String?
-  pdfUrl      String? // Link to official syllabus PDF
-  totalHours  Int? // Total teaching hours
+  pdfUrl      String?
+  totalHours  Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
   subject    Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   modules    Module[]
-  books      Book[] // Textbooks and references
+  books      Book[]
   evaluation EvaluationScheme?
-
-  @@unique([subjectId, year])
 }
 
 model Module {
   id          String   @id @default(cuid())
-  number      Int // Module 1, 2, 3...
-  name        String // "Basics of HTML"
+  number      Int
+  name        String
   description String?
   syllabusId  String
-  weightage   Float? // Percentage of syllabus (e.g., 20.0)
-  hours       Int? // Teaching hours for this module (e.g., 6)
+  weightage   Float?
+  hours       Int?
   createdAt   DateTime @default(now())
 
   // Relations
@@ -130,10 +139,10 @@ model Module {
 
 model Topic {
   id             String    @id @default(cuid())
-  name           String // "Introduction to HTML: syntax, elements, document structure"
+  name           String
   description    String?
   moduleId       String
-  orderIndex     Int       @default(0) // Order within module
+  orderIndex     Int       @default(0)
   lastAskedDate  DateTime?
   timesAsked     Int       @default(0)
   freshnessScore Float     @default(0.5)
@@ -148,7 +157,7 @@ model Topic {
 
 model SubTopic {
   id        String   @id @default(cuid())
-  name      String // "Layer Functions"
+  name      String
   topicId   String
   createdAt DateTime @default(now())
 
@@ -157,7 +166,7 @@ model SubTopic {
   questions Question[]
 }
 
-// ==================== BOOKS & REFERENCES ====================
+// ==================== BOOKS & EVALUATION ====================
 
 enum BookType {
   TEXTBOOK
@@ -166,11 +175,11 @@ enum BookType {
 
 model Book {
   id         String   @id @default(cuid())
-  title      String // "Mastering HTML, CSS & JavaScript"
-  author     String? // "Laura Lemay"
-  publisher  String? // "BPB Publications"
-  year       Int? // 2016
-  edition    String? // "Fifth Edition"
+  title      String
+  author     String?
+  publisher  String?
+  year       Int?
+  edition    String?
   bookType   BookType @default(TEXTBOOK)
   syllabusId String
   createdAt  DateTime @default(now())
@@ -179,18 +188,16 @@ model Book {
   syllabus Syllabus @relation(fields: [syllabusId], references: [id], onDelete: Cascade)
 }
 
-// ==================== EVALUATION SCHEME ====================
-
 model EvaluationScheme {
   id              String   @id @default(cuid())
   syllabusId      String   @unique
-  midterm1        Float? // Percentage (e.g., 15.0)
-  midterm2        Float? // Percentage (e.g., 15.0)
-  endterm         Float? // Percentage (e.g., 60.0)
-  assignments     Float? // Percentage for assignments
-  practicals      Float? // Percentage for lab/practicals
-  attendance      Float? // Percentage for attendance
-  otherComponents Json? // Any other evaluation components
+  midterm1        Float?
+  midterm2        Float?
+  endterm         Float?
+  assignments     Float?
+  practicals      Float?
+  attendance      Float?
+  otherComponents Json?
   createdAt       DateTime @default(now())
 
   // Relations
@@ -200,9 +207,9 @@ model EvaluationScheme {
 // ==================== EXAMS & QUESTIONS ====================
 
 enum ExamType {
-  MIDTERM_1 // First internal exam
-  MIDTERM_2 // Second internal exam
-  END_TERM // Final semester exam
+  MIDTERM_1
+  MIDTERM_2
+  END_TERM
 }
 
 enum Difficulty {
@@ -221,30 +228,30 @@ enum BloomsTaxonomy {
 }
 
 model Exam {
-  id                String    @id @default(cuid())
-  examType          ExamType
-  semesterId        String
-  subjectOfferingId String
-  examDate          DateTime?
-  totalMarks        Int       @default(60)
-  duration          Int       @default(180) // minutes
-  pdfUrl            String? // Original exam paper
-  isProcessed       Boolean   @default(false)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  examType    ExamType
+  subjectId   String
+  semesterId  String
+  examDate    DateTime?
+  totalMarks  Int       @default(60)
+  duration    Int       @default(180)
+  pdfUrl      String?
+  isProcessed Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Relations
-  semester        Semester        @relation(fields: [semesterId], references: [id], onDelete: Cascade)
-  subjectOffering SubjectOffering @relation(fields: [subjectOfferingId], references: [id], onDelete: Cascade)
-  questions       Question[]
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  semester  Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  questions Question[]
 
-  @@unique([subjectOfferingId, examType])
+  @@unique([subjectId, examType, semesterId])
 }
 
 model Question {
   id             String         @id @default(cuid())
-  questionNumber String // "Q1a", "Q4b"
-  text           String // Full question text
+  questionNumber String
+  text           String
   marks          Int
   examId         String
   moduleId       String?
@@ -252,9 +259,9 @@ model Question {
   subTopicId     String?
   difficulty     Difficulty     @default(MEDIUM)
   bloomsLevel    BloomsTaxonomy @default(UNDERSTAND)
-  keywords       String[] // ["OSI", "layers", "protocol"]
-  vectorId       String? // ChromaDB vector reference
-  imageUrl       String? // If question has diagrams
+  keywords       String[]
+  vectorId       String?
+  imageUrl       String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -271,14 +278,12 @@ model Question {
 model Prediction {
   id             String   @id @default(cuid())
   targetExamType ExamType
-  targetYear     Int
-  targetSemester Int
-  subjectCode    String
+  subjectId      String
   generatedAt    DateTime @default(now())
-  confidence     Float // Overall prediction confidence
+  confidence     Float
   modelVersion   String   @default("1.0")
   isValidated    Boolean  @default(false)
-  accuracyScore  Float? // Filled after exam happens
+  accuracyScore  Float?
 
   // Relations
   questions PredictionQuestion[]
@@ -287,14 +292,14 @@ model Prediction {
 model PredictionQuestion {
   id                String   @id @default(cuid())
   predictionId      String
-  generatedText     String // AI-generated question
-  probability       Float // 0.0 - 1.0
-  reasoning         String[] // Why this was predicted
+  generatedText     String
+  probability       Float
+  reasoning         String[]
   suggestedMarks    Int
   targetModule      String?
   targetTopic       String?
-  wasAccurate       Boolean? // Filled after validation
-  matchedQuestionId String? // Actual question it matched
+  wasAccurate       Boolean?
+  matchedQuestionId String?
   createdAt         DateTime @default(now())
 
   // Relations
@@ -302,20 +307,19 @@ model PredictionQuestion {
   matchedQuestion Question?  @relation(fields: [matchedQuestionId], references: [id])
 }
 
-// ==================== LECTURE NOTES (Alpha Signal) ====================
+// ==================== LECTURE NOTES ====================
 
 model LectureNote {
   id          String   @id @default(cuid())
   subjectCode String
-  semester    Int
-  year        Int
-  content     String // Extracted text from lecture
-  sourceType  String // "pdf", "ppt", "transcript"
+  title       String?
+  content     String
+  sourceType  String
   sourceUrl   String?
-  keywords    Json // { "keyword": frequency }
+  keywords    Json?
   createdAt   DateTime @default(now())
 
-  @@index([subjectCode, year, semester])
+  @@index([subjectCode])
 }
 
 // ==================== PROCESSING LOGS ====================
@@ -323,8 +327,8 @@ model LectureNote {
 model ProcessingLog {
   id          String    @id @default(cuid())
   fileName    String
-  fileType    String // "exam_paper", "syllabus", "lecture_note"
-  status      String // "pending", "processing", "completed", "failed"
+  fileType    String
+  status      String
   errorMsg    String?
   processedAt DateTime?
   createdAt   DateTime  @default(now())

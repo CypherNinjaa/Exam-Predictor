@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useCallback, useEffect } from "react";
+import { motion } from "framer-motion";
 import {
 	Upload,
 	FileText,
@@ -12,8 +12,12 @@ import {
 	AlertCircle,
 	Loader2,
 	Sparkles,
+	GraduationCap,
+	BookMarked,
+	Users,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
+import { getCourses, getBatches, getSemesters, getSubjects } from "../actions";
 
 type UploadType = "syllabus" | "exam" | "notes";
 
@@ -23,6 +27,34 @@ interface UploadState {
 	message: string;
 }
 
+interface Course {
+	id: string;
+	name: string;
+	code: string;
+	duration: number;
+}
+
+interface Batch {
+	id: string;
+	startYear: number;
+	endYear: number;
+	courseId: string;
+	course: { name: string; code: string };
+}
+
+interface Semester {
+	id: string;
+	number: number;
+	batchId: string;
+}
+
+interface Subject {
+	id: string;
+	name: string;
+	code: string;
+	semesterId: string;
+}
+
 export default function AdminUploadPage() {
 	const [uploadType, setUploadType] = useState<UploadType>("syllabus");
 	const [uploadState, setUploadState] = useState<UploadState>({
@@ -30,6 +62,103 @@ export default function AdminUploadPage() {
 		status: "idle",
 		message: "",
 	});
+
+	// Data states
+	const [courses, setCourses] = useState<Course[]>([]);
+	const [batches, setBatches] = useState<Batch[]>([]);
+	const [semesters, setSemesters] = useState<Semester[]>([]);
+	const [subjects, setSubjects] = useState<Subject[]>([]);
+
+	// Selection states
+	const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+	const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+	const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
+	const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
+	const [examType, setExamType] = useState<string>("");
+	const [loading, setLoading] = useState(true);
+
+	// Load courses on mount
+	useEffect(() => {
+		async function loadCourses() {
+			try {
+				const result = await getCourses();
+				if (result.success && result.data) {
+					setCourses(result.data);
+				}
+			} catch (error) {
+				console.error("Failed to load courses:", error);
+			} finally {
+				setLoading(false);
+			}
+		}
+		loadCourses();
+	}, []);
+
+	// Load batches when course changes
+	useEffect(() => {
+		async function loadBatches() {
+			if (selectedCourseId) {
+				try {
+					const result = await getBatches(selectedCourseId);
+					if (result.success && result.data) {
+						setBatches(result.data);
+					}
+				} catch (error) {
+					console.error("Failed to load batches:", error);
+				}
+			} else {
+				setBatches([]);
+			}
+			setSelectedBatchId("");
+			setSemesters([]);
+			setSelectedSemesterId("");
+			setSubjects([]);
+			setSelectedSubjectId("");
+		}
+		loadBatches();
+	}, [selectedCourseId]);
+
+	// Load semesters when batch changes
+	useEffect(() => {
+		async function loadSemesters() {
+			if (selectedBatchId) {
+				try {
+					const result = await getSemesters(selectedBatchId);
+					if (result.success && result.data) {
+						setSemesters(result.data);
+					}
+				} catch (error) {
+					console.error("Failed to load semesters:", error);
+				}
+			} else {
+				setSemesters([]);
+			}
+			setSelectedSemesterId("");
+			setSubjects([]);
+			setSelectedSubjectId("");
+		}
+		loadSemesters();
+	}, [selectedBatchId]);
+
+	// Load subjects when semester changes
+	useEffect(() => {
+		async function loadSubjects() {
+			if (selectedSemesterId) {
+				try {
+					const result = await getSubjects(selectedSemesterId);
+					if (result.success && result.data) {
+						setSubjects(result.data);
+					}
+				} catch (error) {
+					console.error("Failed to load subjects:", error);
+				}
+			} else {
+				setSubjects([]);
+			}
+			setSelectedSubjectId("");
+		}
+		loadSubjects();
+	}, [selectedSemesterId]);
 
 	const uploadTypes = [
 		{
@@ -76,6 +205,30 @@ export default function AdminUploadPage() {
 	async function handleUpload() {
 		if (!uploadState.file) return;
 
+		// Validate required fields based on upload type
+		if (uploadType === "syllabus") {
+			if (!selectedSemesterId || !selectedSubjectId) {
+				setUploadState((prev) => ({
+					...prev,
+					status: "error",
+					message: "Please select academic year, semester, and subject",
+				}));
+				return;
+			}
+		}
+
+		if (uploadType === "exam") {
+			if (!selectedSemesterId || !selectedSubjectId || !examType) {
+				setUploadState((prev) => ({
+					...prev,
+					status: "error",
+					message:
+						"Please select academic year, semester, subject, and exam type",
+				}));
+				return;
+			}
+		}
+
 		setUploadState((prev) => ({
 			...prev,
 			status: "uploading",
@@ -86,6 +239,12 @@ export default function AdminUploadPage() {
 			const formData = new FormData();
 			formData.append("file", uploadState.file);
 			formData.append("type", uploadType);
+			formData.append("semesterId", selectedSemesterId);
+			formData.append("subjectId", selectedSubjectId);
+
+			if (uploadType === "exam") {
+				formData.append("examType", examType);
+			}
 
 			// Simulate processing with Gemini
 			await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -109,6 +268,12 @@ export default function AdminUploadPage() {
 					status: "success",
 					message: `Successfully processed ${uploadType}!`,
 				});
+				// Reset selections
+				setSelectedCourseId("");
+				setSelectedBatchId("");
+				setSelectedSemesterId("");
+				setSelectedSubjectId("");
+				setExamType("");
 			} else {
 				throw new Error(result.error || "Upload failed");
 			}
@@ -182,6 +347,122 @@ export default function AdminUploadPage() {
 					</motion.button>
 				))}
 			</div>
+
+			{/* Selection Forms */}
+			{(uploadType === "syllabus" || uploadType === "exam") && (
+				<div className="card p-6 space-y-4">
+					<h3 className="text-lg font-semibold text-white flex items-center gap-2">
+						<GraduationCap className="w-5 h-5 text-violet-400" />
+						Select Details
+					</h3>
+
+					<div className="grid sm:grid-cols-2 gap-4">
+						{/* Course */}
+						<div className="space-y-2">
+							<label className="text-sm text-gray-400 flex items-center gap-2">
+								<BookOpen className="w-4 h-4" />
+								Course
+							</label>
+							<select
+								value={selectedCourseId}
+								onChange={(e) => setSelectedCourseId(e.target.value)}
+								className="select"
+								disabled={loading}
+							>
+								<option value="">Select Course</option>
+								{courses.map((course) => (
+									<option key={course.id} value={course.id}>
+										{course.code} - {course.name}
+									</option>
+								))}
+							</select>
+						</div>
+
+						{/* Batch */}
+						<div className="space-y-2">
+							<label className="text-sm text-gray-400 flex items-center gap-2">
+								<Users className="w-4 h-4" />
+								Batch
+							</label>
+							<select
+								value={selectedBatchId}
+								onChange={(e) => setSelectedBatchId(e.target.value)}
+								className="select"
+								disabled={!selectedCourseId || batches.length === 0}
+							>
+								<option value="">Select Batch</option>
+								{batches.map((batch) => (
+									<option key={batch.id} value={batch.id}>
+										{batch.startYear} - {batch.endYear}
+									</option>
+								))}
+							</select>
+						</div>
+
+						{/* Semester */}
+						<div className="space-y-2">
+							<label className="text-sm text-gray-400 flex items-center gap-2">
+								<GraduationCap className="w-4 h-4" />
+								Semester
+							</label>
+							<select
+								value={selectedSemesterId}
+								onChange={(e) => setSelectedSemesterId(e.target.value)}
+								className="select"
+								disabled={!selectedBatchId || semesters.length === 0}
+							>
+								<option value="">Select Semester</option>
+								{semesters.map((sem) => (
+									<option key={sem.id} value={sem.id}>
+										Semester {sem.number} (Year {Math.ceil(sem.number / 2)})
+									</option>
+								))}
+							</select>
+						</div>
+
+						{/* Subject */}
+						<div className="space-y-2">
+							<label className="text-sm text-gray-400 flex items-center gap-2">
+								<BookMarked className="w-4 h-4" />
+								Subject
+							</label>
+							<select
+								value={selectedSubjectId}
+								onChange={(e) => setSelectedSubjectId(e.target.value)}
+								className="select"
+								disabled={!selectedSemesterId || subjects.length === 0}
+							>
+								<option value="">Select Subject</option>
+								{subjects.map((subject) => (
+									<option key={subject.id} value={subject.id}>
+										{subject.code} - {subject.name}
+									</option>
+								))}
+							</select>
+						</div>
+
+						{/* Exam Type (only for exam uploads) */}
+						{uploadType === "exam" && (
+							<div className="space-y-2 sm:col-span-2">
+								<label className="text-sm text-gray-400 flex items-center gap-2">
+									<FileQuestion className="w-4 h-4" />
+									Exam Type
+								</label>
+								<select
+									value={examType}
+									onChange={(e) => setExamType(e.target.value)}
+									className="select"
+								>
+									<option value="">Select Exam Type</option>
+									<option value="MIDTERM_1">Midterm 1</option>
+									<option value="MIDTERM_2">Midterm 2</option>
+									<option value="END_TERM">End Term</option>
+								</select>
+							</div>
+						)}
+					</div>
+				</div>
+			)}
 
 			{/* Upload Area */}
 			<div className="card p-8">

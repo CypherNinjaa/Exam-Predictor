@@ -17,11 +17,20 @@ export async function POST(request: NextRequest) {
 		const subject = await prisma.subject.findUnique({
 			where: { id: subjectId },
 			include: {
-				syllabi: {
+				syllabus: {
 					include: {
 						modules: {
 							include: {
 								topics: true,
+							},
+						},
+					},
+				},
+				semester: {
+					include: {
+						batch: {
+							include: {
+								course: true,
 							},
 						},
 					},
@@ -40,9 +49,7 @@ export async function POST(request: NextRequest) {
 		const historicalQuestions = await prisma.question.findMany({
 			where: {
 				exam: {
-					subjectOffering: {
-						subjectId: subject.id,
-					},
+					subjectId: subject.id,
 				},
 			},
 			include: {
@@ -55,12 +62,12 @@ export async function POST(request: NextRequest) {
 		});
 
 		// Build context for Gemini
-		const syllabusContent = subject.syllabi
-			.flatMap((s) => s.modules)
-			.map((m) => ({
-				module: m.name,
-				topics: m.topics.map((t) => t.name),
-			}));
+		const syllabusContent = subject.syllabus
+			? subject.syllabus.modules.map((m) => ({
+					module: m.name,
+					topics: m.topics.map((t) => t.name),
+			  }))
+			: [];
 
 		const questionHistory = historicalQuestions.map((q) => ({
 			text: q.text,
@@ -71,18 +78,19 @@ export async function POST(request: NextRequest) {
 		}));
 
 		// Get topics with freshness scores
-		const topicsWithScores = subject.syllabi
-			.flatMap((s) => s.modules)
-			.flatMap((m) =>
-				m.topics.map((t) => ({
-					topic: t.name,
-					module: m.name,
-					freshnessScore: t.freshnessScore,
-					timesAsked: t.timesAsked,
-					lastAsked: t.lastAskedDate,
-				}))
-			)
-			.sort((a, b) => b.freshnessScore - a.freshnessScore);
+		const topicsWithScores = subject.syllabus
+			? subject.syllabus.modules
+					.flatMap((m) =>
+						m.topics.map((t) => ({
+							topic: t.name,
+							module: m.name,
+							freshnessScore: t.freshnessScore,
+							timesAsked: t.timesAsked,
+							lastAsked: t.lastAskedDate,
+						}))
+					)
+					.sort((a, b) => b.freshnessScore - a.freshnessScore)
+			: [];
 
 		// Generate predictions using Gemini
 		const prompt = `You are an expert exam paper analyzer. Based on the following data, predict ${questionCount} likely exam questions for ${
@@ -138,24 +146,31 @@ Return ONLY the JSON, no other text.`;
 		// Save prediction to database
 		await prisma.prediction.create({
 			data: {
-				targetExamType: examType as any,
-				targetYear: new Date().getFullYear(),
-				targetSemester: 1,
-				subjectCode: subject.code,
+				targetExamType: examType as "MIDTERM_1" | "MIDTERM_2" | "END_TERM",
+				subjectId: subject.id,
 				confidence:
 					predictions.predictions.reduce(
-						(sum: number, p: any) => sum + p.probability,
+						(sum: number, p: { probability: number }) => sum + p.probability,
 						0
 					) / predictions.predictions.length,
 				questions: {
-					create: predictions.predictions.map((p: any) => ({
-						generatedText: p.text,
-						probability: p.probability,
-						reasoning: p.reasoning,
-						suggestedMarks: p.marks,
-						targetModule: p.module,
-						targetTopic: p.topic,
-					})),
+					create: predictions.predictions.map(
+						(p: {
+							text: string;
+							probability: number;
+							reasoning: string[];
+							marks: number;
+							module: string;
+							topic: string;
+						}) => ({
+							generatedText: p.text,
+							probability: p.probability,
+							reasoning: p.reasoning,
+							suggestedMarks: p.marks,
+							targetModule: p.module,
+							targetTopic: p.topic,
+						})
+					),
 				},
 			},
 		});

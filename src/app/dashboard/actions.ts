@@ -58,7 +58,7 @@ export async function generatePredictions(
 		const subject = await prisma.subject.findUnique({
 			where: { id: subjectId },
 			include: {
-				syllabi: {
+				syllabus: {
 					include: {
 						modules: {
 							include: {
@@ -77,7 +77,7 @@ export async function generatePredictions(
 
 		// Generate AI-based predictions from syllabus topics
 		const predictions: PredictionResult[] = [];
-		const syllabus = subject.syllabi[0];
+		const syllabus = subject.syllabus;
 
 		if (syllabus) {
 			for (const module of syllabus.modules) {
