@@ -53,6 +53,7 @@ interface UploadState {
 		extractedModules?: number;
 		extractedTopics?: number;
 		extractedBooks?: number;
+		extractedQuestions?: number;
 		extractionError?: string;
 	};
 	duplicateInfo?: DuplicateInfo;
@@ -107,6 +108,7 @@ export default function AdminUploadPage() {
 	const [selectedSemesterId, setSelectedSemesterId] = useState<string>("");
 	const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
 	const [examType, setExamType] = useState<string>("");
+	const [academicYear, setAcademicYear] = useState<string>("");
 	const [loading, setLoading] = useState(true);
 
 	// Load courses on mount
@@ -250,12 +252,17 @@ export default function AdminUploadPage() {
 		}
 
 		if (uploadType === "exam") {
-			if (!selectedSemesterId || !selectedSubjectId || !examType) {
+			if (
+				!selectedSemesterId ||
+				!selectedSubjectId ||
+				!examType ||
+				!academicYear
+			) {
 				setUploadState((prev) => ({
 					...prev,
 					status: "error",
 					message:
-						"Please select academic year, semester, subject, and exam type",
+						"Please select academic year, semester, subject, exam type, and paper year",
 				}));
 				return;
 			}
@@ -277,6 +284,7 @@ export default function AdminUploadPage() {
 
 			if (uploadType === "exam") {
 				formData.append("examType", examType);
+				formData.append("academicYear", academicYear);
 			}
 
 			// If user confirmed replacement, add forceReplace flag
@@ -339,6 +347,7 @@ export default function AdminUploadPage() {
 							extractedModules: extractionData?.extractedModules,
 							extractedTopics: extractionData?.extractedTopics,
 							extractedBooks: extractionData?.extractedBooks,
+							extractedQuestions: extractionData?.questionsCount,
 						},
 					});
 				}
@@ -348,6 +357,7 @@ export default function AdminUploadPage() {
 				setSelectedSemesterId("");
 				setSelectedSubjectId("");
 				setExamType("");
+				setAcademicYear("");
 			} else {
 				throw new Error(result.error || "Upload failed");
 			}
@@ -520,22 +530,44 @@ export default function AdminUploadPage() {
 
 						{/* Exam Type (only for exam uploads) */}
 						{uploadType === "exam" && (
-							<div className="space-y-2 sm:col-span-2">
-								<label className="text-sm text-gray-400 flex items-center gap-2">
-									<FileQuestion className="w-4 h-4" />
-									Exam Type
-								</label>
-								<select
-									value={examType}
-									onChange={(e) => setExamType(e.target.value)}
-									className="select"
-								>
-									<option value="">Select Exam Type</option>
-									<option value="MIDTERM_1">Midterm 1</option>
-									<option value="MIDTERM_2">Midterm 2</option>
-									<option value="END_TERM">End Term</option>
-								</select>
-							</div>
+							<>
+								<div className="space-y-2">
+									<label className="text-sm text-gray-400 flex items-center gap-2">
+										<FileQuestion className="w-4 h-4" />
+										Exam Type
+									</label>
+									<select
+										value={examType}
+										onChange={(e) => setExamType(e.target.value)}
+										className="select"
+									>
+										<option value="">Select Exam Type</option>
+										<option value="MIDTERM_1">Midterm 1</option>
+										<option value="MIDTERM_2">Midterm 2</option>
+										<option value="END_TERM">End Term</option>
+									</select>
+								</div>
+
+								<div className="space-y-2">
+									<label className="text-sm text-gray-400 flex items-center gap-2">
+										<GraduationCap className="w-4 h-4" />
+										Paper Year
+									</label>
+									<select
+										value={academicYear}
+										onChange={(e) => setAcademicYear(e.target.value)}
+										className="select"
+									>
+										<option value="">Select Year</option>
+										<option value="2025-2026">2025-2026</option>
+										<option value="2024-2025">2024-2025</option>
+										<option value="2023-2024">2023-2024</option>
+										<option value="2022-2023">2022-2023</option>
+										<option value="2021-2022">2021-2022</option>
+										<option value="2020-2021">2020-2021</option>
+									</select>
+								</div>
+							</>
 						)}
 					</div>
 				</div>
@@ -656,6 +688,15 @@ export default function AdminUploadPage() {
 												{uploadState.extractionData.extractedBooks}
 											</p>
 											<p className="text-gray-500 text-xs">Books</p>
+										</div>
+									)}
+									{uploadState.extractionData.extractedQuestions !==
+										undefined && (
+										<div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2">
+											<p className="text-amber-400 text-2xl font-bold">
+												{uploadState.extractionData.extractedQuestions}
+											</p>
+											<p className="text-gray-500 text-xs">Questions</p>
 										</div>
 									)}
 								</div>

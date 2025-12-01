@@ -11,13 +11,14 @@ import {
 	Sparkles,
 	Shield,
 	User,
+	BookText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
 	{ href: "/", label: "Home", icon: Home },
 	{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-	{ href: "/upload", label: "Upload", icon: Upload },
+	{ href: "/notes", label: "Notes", icon: BookText },
 	{ href: "/predict", label: "Predict", icon: Sparkles },
 ];
 

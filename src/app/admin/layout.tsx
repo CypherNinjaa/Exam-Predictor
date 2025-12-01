@@ -20,6 +20,8 @@ import {
 	BarChart3,
 	FileText,
 	Loader2,
+	Brain,
+	BookText,
 } from "lucide-react";
 
 interface AdminLayoutProps {
@@ -33,6 +35,8 @@ const sidebarItems = [
 	{ href: "/admin/questions", label: "Questions", icon: FileQuestion },
 	{ href: "/admin/exams", label: "Exams", icon: GraduationCap },
 	{ href: "/admin/upload", label: "Upload", icon: Upload },
+	{ href: "/admin/notes", label: "Notes", icon: BookText },
+	{ href: "/admin/predict", label: "Predict", icon: Brain },
 	{ href: "/admin/users", label: "Users", icon: Users },
 	{ href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
 	{ href: "/admin/settings", label: "Settings", icon: Settings },

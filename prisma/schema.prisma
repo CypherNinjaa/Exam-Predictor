@@ -96,6 +96,7 @@ model Subject {
   semester Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   syllabus Syllabus?
   exams    Exam[]
+  notes    Note[]     // NEW: Notes for this subject
 
   @@unique([semesterId, code])
 }
@@ -219,6 +220,13 @@ enum Difficulty {
   HARD
 }
 
+enum QuestionType {
+  MCQ
+  SHORT
+  LONG
+  DESCRIPTIVE
+}
+
 enum BloomsTaxonomy {
   REMEMBER
   UNDERSTAND
@@ -229,49 +237,58 @@ enum BloomsTaxonomy {
 }
 
 model Exam {
-  id          String    @id @default(cuid())
-  examType    ExamType
-  subjectId   String
-  semesterId  String
-  examDate    DateTime?
-  totalMarks  Int       @default(60)
-  duration    Int       @default(180)
-  pdfUrl      String?
-  isProcessed Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  examType     ExamType
+  subjectId    String
+  semesterId   String
+  examDate     DateTime?
+  academicYear String?   // e.g., "2024-2025"
+  totalMarks   Int       @default(60)
+  duration     Int       @default(180) // in minutes
+  pdfUrl       String?
+  fileHash     String?   // MD5 hash for duplicate detection
+  isProcessed  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Relations
   subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   semester  Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   questions Question[]
 
-  @@unique([subjectId, examType, semesterId])
+  @@unique([subjectId, examType, semesterId, academicYear])
 }
 
 model Question {
-  id             String         @id @default(cuid())
-  questionNumber String
-  text           String
-  marks          Int
-  examId         String
-  moduleId       String?
-  topicId        String?
-  subTopicId     String?
-  difficulty     Difficulty     @default(MEDIUM)
-  bloomsLevel    BloomsTaxonomy @default(UNDERSTAND)
-  keywords       String[]
-  vectorId       String?
-  imageUrl       String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String          @id @default(cuid())
+  questionNumber   String
+  text             String
+  marks            Int
+  examId           String
+  moduleId         String?
+  topicId          String?
+  subTopicId       String?
+  section          String?         // e.g., "A", "B", "C"
+  questionType     QuestionType    @default(SHORT)
+  difficulty       Difficulty      @default(MEDIUM)
+  bloomsLevel      BloomsTaxonomy  @default(UNDERSTAND)
+  keywords         String[]
+  options          String[]        // For MCQ questions
+  hasAlternative   Boolean         @default(false) // Is this an "OR" question?
+  alternativeToId  String?         // Points to the question this is an alternative to
+  vectorId         String?
+  imageUrl         String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   // Relations
-  exam        Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
-  module      Module?              @relation(fields: [moduleId], references: [id])
-  topic       Topic?               @relation(fields: [topicId], references: [id])
-  subTopic    SubTopic?            @relation(fields: [subTopicId], references: [id])
-  predictions PredictionQuestion[]
+  exam          Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
+  module        Module?              @relation(fields: [moduleId], references: [id])
+  topic         Topic?               @relation(fields: [topicId], references: [id])
+  subTopic      SubTopic?            @relation(fields: [subTopicId], references: [id])
+  alternativeTo Question?            @relation("QuestionAlternatives", fields: [alternativeToId], references: [id])
+  alternatives  Question[]           @relation("QuestionAlternatives")
+  predictions   PredictionQuestion[]
 }
 
 // ==================== PREDICTIONS ====================
@@ -309,6 +326,39 @@ model PredictionQuestion {
 }
 
 // ==================== LECTURE NOTES ====================
+
+model Note {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  
+  // File info (original file stored in public/uploads/notes/)
+  fileName      String
+  fileUrl       String   // Relative path: /uploads/notes/xyz.pdf
+  fileType      String   // pdf, docx, pptx, jpg, png, etc.
+  fileSize      Int      // in bytes
+  
+  // Relations
+  subjectId     String
+  subject       Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  // AI-extracted content
+  extractedText String?  @db.Text // Full text extracted by AI
+  keyTopics     String[] // Main topics covered
+  moduleNumbers Int[]    // Which modules it covers [1, 2, 3]
+  
+  // Public access
+  isPublic      Boolean  @default(true)
+  downloadCount Int      @default(0)
+  
+  // Metadata
+  uploadedBy    String   // Clerk user ID (admin who uploaded)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([subjectId])
+  @@index([isPublic])
+}
 
 model LectureNote {
   id          String   @id @default(cuid())

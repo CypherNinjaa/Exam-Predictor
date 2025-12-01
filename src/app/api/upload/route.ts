@@ -11,6 +11,12 @@ import {
 	generateFileHash,
 	checkContentSimilarity,
 } from "@/lib/duplicate-checker";
+import {
+	uploadAndExtractPYQ,
+	checkPYQDuplicate,
+	generateFileHash as generatePYQHash,
+} from "@/lib/pyq-extractor";
+import { ExamType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Allow up to 60 seconds for AI processing
@@ -23,7 +29,9 @@ export async function POST(request: NextRequest) {
 		const file = formData.get("file") as File;
 		const type = formData.get("type") as string;
 		const subjectId = formData.get("subjectId") as string;
+		const semesterId = formData.get("semesterId") as string;
 		const examType = formData.get("examType") as string;
+		const academicYear = formData.get("academicYear") as string;
 		const forceReplace = formData.get("forceReplace") === "true"; // Allow override
 
 		if (!file) {
@@ -226,43 +234,167 @@ export async function POST(request: NextRequest) {
 			}
 		}
 
-		// Handle exam paper upload
-		if (type === "exam" && subjectId && examType) {
-			const subject = await prisma.subject.findUnique({
-				where: { id: subjectId },
-				select: { semesterId: true },
-			});
+		// Handle exam paper upload with AI extraction
+		if (
+			type === "exam" &&
+			subjectId &&
+			examType &&
+			semesterId &&
+			academicYear
+		) {
+			try {
+				// Check for duplicates first
+				const pyqFileHash = generatePYQHash(buffer);
+				const duplicateCheck = await checkPYQDuplicate(
+					subjectId,
+					examType as ExamType,
+					semesterId,
+					academicYear,
+					pyqFileHash
+				);
 
-			if (subject) {
-				// Create or update exam record
-				await prisma.exam.upsert({
-					where: {
-						subjectId_examType_semesterId: {
-							subjectId,
-							examType: examType as "MIDTERM_1" | "MIDTERM_2" | "END_TERM",
-							semesterId: subject.semesterId,
+				if (duplicateCheck.isDuplicate && !forceReplace) {
+					return NextResponse.json(
+						{
+							success: false,
+							isDuplicate: true,
+							duplicateType: "same_exam",
+							existingExamId: duplicateCheck.existingExam?.id,
+							message: `A ${examType.replace(
+								"_",
+								" "
+							)} paper for this subject and academic year already exists.`,
+							canReplace: true,
 						},
+						{ status: 409 }
+					);
+				}
+
+				console.log("Starting AI extraction for PYQ...");
+				const result = await uploadAndExtractPYQ(
+					buffer,
+					subjectId,
+					semesterId,
+					academicYear,
+					examType as ExamType,
+					forceReplace
+				);
+
+				if (!result.success) {
+					if (result.isDuplicate) {
+						return NextResponse.json(
+							{
+								success: false,
+								isDuplicate: true,
+								duplicateType: "same_exam",
+								message: result.error,
+								canReplace: true,
+							},
+							{ status: 409 }
+						);
+					}
+					throw new Error(result.error);
+				}
+
+				// Save the PDF file
+				await writeFile(filepath, buffer);
+
+				// Update exam with PDF URL
+				await prisma.exam.update({
+					where: { id: result.examId },
+					data: { pdfUrl: filepath },
+				});
+
+				// Update processing log
+				await prisma.processingLog.update({
+					where: { id: logId },
+					data: {
+						status: "completed",
+						processedAt: new Date(),
 					},
-					update: {
-						pdfUrl: filepath,
-						isProcessed: false,
-					},
-					create: {
+				});
+
+				return NextResponse.json({
+					success: true,
+					message: forceReplace
+						? `PYQ replaced successfully! Extracted ${result.questionsCount} questions.`
+						: `PYQ uploaded successfully! Extracted ${result.questionsCount} questions.`,
+					data: {
+						logId,
+						filename,
+						type,
 						subjectId,
-						semesterId: subject.semesterId,
-						examType: examType as "MIDTERM_1" | "MIDTERM_2" | "END_TERM",
-						pdfUrl: filepath,
+						examId: result.examId,
+						questionsCount: result.questionsCount,
+						extractedInfo: result.extractedData?.examInfo,
+						wasReplaced: forceReplace,
+					},
+				});
+			} catch (extractError) {
+				console.error("PYQ Extraction Error:", extractError);
+
+				// Update log with error
+				await prisma.processingLog.update({
+					where: { id: logId },
+					data: {
+						status: "failed",
+						errorMsg:
+							extractError instanceof Error
+								? extractError.message
+								: "PYQ extraction failed",
+					},
+				});
+
+				// Still save the PDF file
+				await writeFile(filepath, buffer);
+
+				// Create basic exam record without questions
+				const subject = await prisma.subject.findUnique({
+					where: { id: subjectId },
+					select: { semesterId: true },
+				});
+
+				if (subject) {
+					await prisma.exam.upsert({
+						where: {
+							subjectId_examType_semesterId_academicYear: {
+								subjectId,
+								examType: examType as ExamType,
+								semesterId: subject.semesterId,
+								academicYear,
+							},
+						},
+						update: {
+							pdfUrl: filepath,
+							isProcessed: false,
+						},
+						create: {
+							subjectId,
+							semesterId: subject.semesterId,
+							examType: examType as ExamType,
+							academicYear,
+							pdfUrl: filepath,
+							isProcessed: false,
+						},
+					});
+				}
+
+				return NextResponse.json({
+					success: true,
+					message:
+						"PDF saved but AI extraction failed. Questions can be added manually.",
+					data: {
+						logId,
+						filename,
+						type,
+						subjectId,
+						extractionError:
+							extractError instanceof Error
+								? extractError.message
+								: "Unknown error",
 					},
 				});
 			}
-
-			await prisma.processingLog.update({
-				where: { id: logId },
-				data: {
-					status: "completed",
-					processedAt: new Date(),
-				},
-			});
 		}
 
 		// Handle lecture notes upload

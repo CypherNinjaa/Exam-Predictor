@@ -1,0 +1,240 @@
+{
+  "examInfo": {
+    "subjectCode": "CSIT256",
+    "subjectName": "Web Development Technology",
+    "examType": "MIDTERM_1",
+    "date": "2025-09-22",
+    "totalMarks": 30,
+    "duration": 60,
+    "semester": 3,
+    "academicYear": "2025-26"
+  },
+  "instructions": [
+    "The Question Paper consists of three parts.",
+    "Part A is compulsory."
+  ],
+  "sections": [
+    {
+      "name": "Part A",
+      "questionType": "SHORT",
+      "questions": [
+        {
+          "questionNumber": "1",
+          "text": "Answer the following in short:",
+          "marks": 10,
+          "parts": [
+            {
+              "partLabel": "i",
+              "text": "Differentiate between ordered and unordered lists in HTML.",
+              "marks": 2
+            },
+            {
+              "partLabel": "ii",
+              "text": "Define the <marquee> tag and mention one of its attributes.",
+              "marks": 2
+            },
+            {
+              "partLabel": "iii",
+              "text": "Define inline and block elements?",
+              "marks": 2
+            },
+            {
+              "partLabel": "iv",
+              "text": "How do you insert an inline image in an HTML document?",
+              "marks": 2
+            },
+            {
+              "partLabel": "v",
+              "text": "Draw HTML layout, giving an example of tags for each section?",
+              "marks": 2
+            }
+          ],
+          "section": "A",
+          "hasOptions": false,
+          "options": [],
+          "questionType": "SHORT",
+          "difficulty": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "name": "Part B",
+      "questionType": "DESCRIPTIVE",
+      "questions": [
+        {
+          "questionNumber": "2i",
+          "text": "Explain how row and column spanning work in tables.",
+          "marks": 5,
+          "parts": [],
+          "section": "B",
+          "hasOptions": false,
+          "options": [],
+          "questionType": "DESCRIPTIVE",
+          "difficulty": "MEDIUM"
+        },
+        {
+          "questionNumber": "2ii",
+          "text": "Write a CSS snippet to style a paragraph with different colors, font and border.",
+          "marks": 5,
+          "parts": [],
+          "section": "B",
+          "hasOptions": false,
+          "options": [],
+          "questionType": "DESCRIPTIVE",
+          "difficulty": "MEDIUM"
+        },
+        {
+          "questionNumber": "2iii",
+          "text": "Explain the concept of measurement in CSS.",
+          "marks": 5,
+          "parts": [],
+          "section": "B",
+          "hasOptions": false,
+          "options": [],
+          "questionType": "DESCRIPTIVE",
+          "difficulty": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "name": "Part C",
+      "questionType": "LONG",
+      "questions": [
+        {
+          "questionNumber": "3",
+          "text": "Write an HTML code snippet to design a student table with 3 rows and 4 columns, including columns for Enroll Number, Name, Course and Semester.",
+          "marks": 10,
+          "parts": [],
+          "section": "C",
+          "hasOptions": true,
+          "options": [],
+          "questionType": "LONG",
+          "difficulty": "HARD"
+        },
+        {
+          "questionNumber": "3 OR",
+          "text": "Write an HTML program that shows all three types of CSS combined in the same file.",
+          "marks": 10,
+          "parts": [],
+          "section": "C",
+          "hasOptions": true,
+          "options": [],
+          "questionType": "LONG",
+          "difficulty": "HARD"
+        }
+      ]
+    }
+  ],
+  "allQuestions": [
+    {
+      "questionNumber": "1i",
+      "text": "Differentiate between ordered and unordered lists in HTML.",
+      "marks": 2,
+      "parts": [],
+      "section": "A",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "SHORT",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "questionNumber": "1ii",
+      "text": "Define the <marquee> tag and mention one of its attributes.",
+      "marks": 2,
+      "parts": [],
+      "section": "A",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "SHORT",
+      "difficulty": "EASY"
+    },
+    {
+      "questionNumber": "1iii",
+      "text": "Define inline and block elements?",
+      "marks": 2,
+      "parts": [],
+      "section": "A",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "SHORT",
+      "difficulty": "EASY"
+    },
+    {
+      "questionNumber": "1iv",
+      "text": "How do you insert an inline image in an HTML document?",
+      "marks": 2,
+      "parts": [],
+      "section": "A",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "SHORT",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "questionNumber": "1v",
+      "text": "Draw HTML layout, giving an example of tags for each section?",
+      "marks": 2,
+      "parts": [],
+      "section": "A",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "SHORT",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "questionNumber": "2i",
+      "text": "Explain how row and column spanning work in tables.",
+      "marks": 5,
+      "parts": [],
+      "section": "B",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "DESCRIPTIVE",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "questionNumber": "2ii",
+      "text": "Write a CSS snippet to style a paragraph with different colors, font and border.",
+      "marks": 5,
+      "parts": [],
+      "section": "B",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "DESCRIPTIVE",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "questionNumber": "2iii",
+      "text": "Explain the concept of measurement in CSS.",
+      "marks": 5,
+      "parts": [],
+      "section": "B",
+      "hasOptions": false,
+      "options": [],
+      "questionType": "DESCRIPTIVE",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "questionNumber": "3",
+      "text": "Write an HTML code snippet to design a student table with 3 rows and 4 columns, including columns for Enroll Number, Name, Course and Semester.",
+      "marks": 10,
+      "parts": [],
+      "section": "C",
+      "hasOptions": true,
+      "options": [],
+      "questionType": "LONG",
+      "difficulty": "HARD"
+    },
+    {
+      "questionNumber": "3 OR",
+      "text": "Write an HTML program that shows all three types of CSS combined in the same file.",
+      "marks": 10,
+      "parts": [],
+      "section": "C",
+      "hasOptions": true,
+      "options": [],
+      "questionType": "LONG",
+      "difficulty": "HARD"
+    }
+  ]
+}
