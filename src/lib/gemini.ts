@@ -20,6 +20,12 @@ export const gemini = client;
  * - gemini-2.0-flash: Fast workhorse, 1M token context
  * - gemini-2.0-flash-lite: Fastest, most cost-efficient
  *
+ * MULTIMODAL MODELS:
+ * - imagen-4.0-generate-001: High-quality image generation
+ * - gemini-2.5-flash-image: Nano Banana - General image generation and editing
+ * - veo-3.1-fast-generate-preview: Fast video generation (720p/1080p)
+ * - veo-3.1-generate-preview: High-quality video generation with advanced features
+ *
  * PREVIEW MODELS (Use with caution):
  * - gemini-3-pro-preview: NEW Reasoning & Agentic model (Released Nov 18, 2025)
  *   ⚠️ WARNINGS:
@@ -38,6 +44,12 @@ export const MODELS = {
 	PRO: "gemini-2.5-pro",
 	// Gemini 3.0 Preview - Cutting edge but LIMITED (use for testing only)
 	GEMINI_3_PREVIEW: "gemini-3-pro-preview",
+	// Image generation models
+	IMAGEN: "imagen-4.0-generate-001", // High-quality image generation
+	NANO_BANANA: "gemini-2.5-flash-image", // General image generation and editing
+	// Video generation models
+	VEO_FAST: "veo-3.1-fast-generate-preview", // Fast video generation
+	VEO_HQ: "veo-3.1-generate-preview", // High-quality video with advanced features
 	// Fallback models if primary fails
 	FALLBACKS: ["gemini-2.0-flash", "gemini-2.0-flash-lite"] as const,
 } as const;
@@ -198,3 +210,212 @@ export async function generateWithThinking(
 }
 
 export { client as genAI };
+
+/**
+ * Generate images using Imagen 4.0 (high quality)
+ */
+export async function generateImage(
+	prompt: string,
+	options: {
+		numberOfImages?: number;
+		aspectRatio?: "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+		outputMimeType?: "image/jpeg" | "image/png";
+	} = {}
+) {
+	const {
+		numberOfImages = 1,
+		aspectRatio = "1:1",
+		outputMimeType = "image/jpeg",
+	} = options;
+
+	try {
+		const response = await client.models.generateImages({
+			model: MODELS.IMAGEN,
+			prompt,
+			config: {
+				numberOfImages,
+				outputMimeType,
+				aspectRatio,
+			},
+		});
+
+		return {
+			success: true,
+			images:
+				response.generatedImages?.map((img: any) => ({
+					base64: img.image.imageBytes,
+					mimeType: outputMimeType,
+					dataUrl: `data:${outputMimeType};base64,${img.image.imageBytes}`,
+				})) || [],
+		};
+	} catch (error) {
+		console.error("Image generation failed:", error);
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Unknown error",
+		};
+	}
+}
+
+/**
+ * Generate or edit images using Nano Banana (gemini-2.5-flash-image)
+ */
+export async function generateImageNanoBanana(
+	prompt: string,
+	options: {
+		editImage?: string; // base64 encoded image for editing
+		mimeType?: string;
+	} = {}
+) {
+	try {
+		const parts: any[] = [];
+
+		// Add reference image if editing
+		if (options.editImage) {
+			parts.push({
+				inlineData: {
+					data: options.editImage,
+					mimeType: options.mimeType || "image/jpeg",
+				},
+			});
+		}
+
+		// Add text prompt
+		parts.push({ text: prompt });
+
+		const response = await client.models.generateContent({
+			model: MODELS.NANO_BANANA,
+			contents: { parts },
+			config: {
+				responseModalities: ["IMAGE" as any], // Modality.IMAGE
+			},
+		});
+
+		// Extract image from response
+		const imagePart = response.candidates?.[0]?.content?.parts?.find(
+			(part: any) => part.inlineData
+		);
+
+		if (imagePart?.inlineData) {
+			const base64 = imagePart.inlineData.data;
+			const mimeType = imagePart.inlineData.mimeType || "image/png";
+			return {
+				success: true,
+				image: {
+					base64,
+					mimeType,
+					dataUrl: `data:${mimeType};base64,${base64}`,
+				},
+			};
+		}
+
+		return {
+			success: false,
+			error: "No image data in response",
+		};
+	} catch (error) {
+		console.error("Nano Banana generation failed:", error);
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Unknown error",
+		};
+	}
+}
+
+/**
+ * Generate videos using Veo 3.1
+ */
+export async function generateVideo(
+	prompt: string,
+	options: {
+		model?: "fast" | "hq"; // fast = veo-3.1-fast-generate-preview, hq = veo-3.1-generate-preview
+		aspectRatio?: "16:9" | "9:16";
+		resolution?: "720p" | "1080p";
+		referenceImage?: {
+			base64: string;
+			mimeType: string;
+		};
+		lastFrame?: {
+			base64: string;
+			mimeType: string;
+		};
+	} = {}
+) {
+	const {
+		model = "fast",
+		aspectRatio = "16:9",
+		resolution = "720p",
+		referenceImage,
+		lastFrame,
+	} = options;
+
+	const modelName = model === "fast" ? MODELS.VEO_FAST : MODELS.VEO_HQ;
+
+	try {
+		const config: any = {
+			numberOfVideos: 1,
+			resolution,
+			aspectRatio,
+		};
+
+		// Add reference image if provided
+		const imageData = referenceImage
+			? {
+					imageBytes: referenceImage.base64,
+					mimeType: referenceImage.mimeType,
+			  }
+			: undefined;
+
+		// Add last frame if provided
+		if (lastFrame) {
+			config.lastFrame = {
+				imageBytes: lastFrame.base64,
+				mimeType: lastFrame.mimeType,
+			};
+		}
+
+		// Start video generation operation
+		let operation: any = await client.models.generateVideos({
+			model: modelName,
+			prompt,
+			...(imageData && { image: imageData }),
+			config,
+		});
+
+		// Poll for completion (video generation takes time)
+		const maxAttempts = 60; // 10 minutes max (10s * 60)
+		let attempts = 0;
+
+		while (!operation.done && attempts < maxAttempts) {
+			await new Promise((resolve) => setTimeout(resolve, 10000)); // Wait 10 seconds
+			operation = await client.operations.getVideosOperation({ operation });
+			attempts++;
+		}
+
+		if (
+			operation.done &&
+			operation.response?.generatedVideos?.[0]?.video?.uri
+		) {
+			const videoUri = operation.response.generatedVideos[0].video.uri;
+			// Video URI is a GCS signed URL, ready to use
+			return {
+				success: true,
+				videoUri,
+				operation,
+			};
+		}
+
+		return {
+			success: false,
+			error:
+				attempts >= maxAttempts ? "Video generation timeout" : "Unknown error",
+			operation,
+		};
+	} catch (error) {
+		console.error("Video generation failed:", error);
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Unknown error",
+		};
+	}
+}

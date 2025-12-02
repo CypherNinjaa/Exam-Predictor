@@ -493,11 +493,22 @@ model UserMemory {
   @@index([lastUsedAt])
 }
 
+enum MediaType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
 model ChatMessage {
   id             String           @id @default(cuid())
   conversationId String
   role           String           // "user" or "model"
   text           String           @db.Text
+  mediaType      MediaType        @default(TEXT) // Type of content
+  imageUrl       String?          // Base64 data URL or public URL for images
+  videoUrl       String?          // Public URL for videos
+  mimeType       String?          // MIME type for media (image/jpeg, video/mp4, etc.)
+  metadata       Json?            // Additional data: aspectRatio, resolution, model used, etc.
   createdAt      DateTime         @default(now())
   
   // Relations
@@ -505,6 +516,7 @@ model ChatMessage {
   
   @@index([conversationId])
   @@index([createdAt])
+  @@index([mediaType])
 }
 
 enum ActivityType {

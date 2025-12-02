@@ -40,12 +40,27 @@ import {
 	Pencil,
 	Settings,
 	Brain,
+	Image as ImageIcon,
+	Video,
+	Download,
+	Maximize2,
 } from "lucide-react";
+
+type ChatMode = "text" | "image" | "video";
+type ImageModel = "imagen" | "nano";
+type VideoModel = "fast" | "hq";
+type AspectRatio = "1:1" | "3:4" | "4:3" | "9:16" | "16:9";
+type Resolution = "720p" | "1080p";
 
 interface Message {
 	id: string;
 	role: "user" | "model";
 	text: string;
+	mediaType?: "TEXT" | "IMAGE" | "VIDEO";
+	imageUrl?: string;
+	videoUrl?: string;
+	mimeType?: string;
+	metadata?: any;
 	createdAt: Date;
 }
 
@@ -108,8 +123,19 @@ export default function ChatPage() {
 		"narrow"
 	);
 
+	// Multimodal state
+	const [chatMode, setChatMode] = useState<ChatMode>("text");
+	const [imageModel, setImageModel] = useState<ImageModel>("imagen");
+	const [videoModel, setVideoModel] = useState<VideoModel>("fast");
+	const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
+	const [resolution, setResolution] = useState<Resolution>("720p");
+	const [isGenerating, setIsGenerating] = useState(false);
+	const [referenceImage, setReferenceImage] = useState<string | null>(null);
+	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
 		loadConversations();
@@ -163,10 +189,24 @@ export default function ChatPage() {
 	const handleSend = async () => {
 		if (!inputText.trim()) return;
 
+		// Route to appropriate handler based on chat mode
+		if (chatMode === "image") {
+			await handleImageGeneration();
+		} else if (chatMode === "video") {
+			await handleVideoGeneration();
+		} else {
+			await handleTextChat();
+		}
+	};
+
+	const handleTextChat = async () => {
+		if (!inputText.trim()) return;
+
 		const userMessage: Message = {
 			id: `temp-${Date.now()}`,
 			role: "user",
 			text: inputText,
+			mediaType: "TEXT",
 			createdAt: new Date(),
 		};
 
@@ -292,9 +332,259 @@ export default function ChatPage() {
 		}
 	};
 
+	const handleImageGeneration = async () => {
+		if (!inputText.trim()) return;
+
+		setIsGenerating(true);
+		const currentInput = inputText;
+		const currentRefImage = referenceImage;
+		setInputText("");
+
+		try {
+			// Create conversation if needed
+			let conversationId = activeConversationId;
+			if (!conversationId) {
+				const createResponse = await fetch("/api/chat/conversations", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						title: `Image: ${currentInput.slice(0, 40)}`,
+						modelUsed: imageModel,
+					}),
+				});
+
+				if (createResponse.ok) {
+					const newConversation = await createResponse.json();
+					conversationId = newConversation.id;
+					setActiveConversationId(conversationId);
+					await loadConversations();
+				}
+			}
+
+			// Show user message with reference image preview
+			if (currentRefImage) {
+				const userMessage: Message = {
+					id: `user-${Date.now()}`,
+					role: "user",
+					text: currentInput,
+					mediaType: "TEXT",
+					imageUrl: `data:image/jpeg;base64,${currentRefImage}`,
+					createdAt: new Date(),
+				};
+				setMessages((prev) => [...prev, userMessage]);
+			}
+
+			// Show generating message
+			const generatingMessage: Message = {
+				id: `generating-${Date.now()}`,
+				role: "model",
+				text:
+					imageModel === "imagen"
+						? "🎨 Generating with Imagen 4.0..."
+						: "✨ Generating with Nano Banana...",
+				mediaType: "TEXT",
+				createdAt: new Date(),
+			};
+			setMessages((prev) => [...prev, generatingMessage]);
+
+			// Generate image
+			const response = await fetch("/api/chat/generate-image", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					conversationId,
+					prompt: currentInput,
+					model: imageModel,
+					aspectRatio,
+					editImage: currentRefImage,
+					mimeType: "image/jpeg",
+				}),
+			});
+
+			const data = await response.json();
+
+			// Remove temporary messages
+			setMessages((prev) =>
+				prev.filter(
+					(msg) =>
+						!msg.id.startsWith("user-") && !msg.id.startsWith("generating-")
+				)
+			);
+
+			if (response.ok && data.success) {
+				// Refresh conversation to show new messages from DB
+				if (conversationId) {
+					await loadConversation(conversationId);
+				}
+				// Clear reference image after generation
+				setReferenceImage(null);
+			} else {
+				throw new Error(data.error || "Image generation failed");
+			}
+		} catch (error) {
+			console.error("Image generation error:", error);
+			const errorMessage: Message = {
+				id: `error-${Date.now()}`,
+				role: "model",
+				text: "❌ Sorry, image generation failed. Please try again.",
+				mediaType: "TEXT",
+				createdAt: new Date(),
+			};
+			setMessages((prev) => [...prev, errorMessage]);
+		} finally {
+			setIsGenerating(false);
+		}
+	};
+
+	const handleVideoGeneration = async () => {
+		if (!inputText.trim()) return;
+
+		setIsGenerating(true);
+		const currentInput = inputText;
+		const currentRefImage = referenceImage;
+		setInputText("");
+
+		try {
+			// Create conversation if needed
+			let conversationId = activeConversationId;
+			if (!conversationId) {
+				const createResponse = await fetch("/api/chat/conversations", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						title: `Video: ${currentInput.slice(0, 40)}`,
+						modelUsed: videoModel,
+					}),
+				});
+
+				if (createResponse.ok) {
+					const newConversation = await createResponse.json();
+					conversationId = newConversation.id;
+					setActiveConversationId(conversationId);
+					await loadConversations();
+				}
+			}
+
+			// Show user message with reference image preview
+			const userMessage: Message = {
+				id: `user-${Date.now()}`,
+				role: "user",
+				text: currentInput,
+				mediaType: "TEXT",
+				imageUrl: currentRefImage
+					? `data:image/jpeg;base64,${currentRefImage}`
+					: undefined,
+				createdAt: new Date(),
+			};
+			setMessages((prev) => [...prev, userMessage]);
+
+			// Show "generating" message
+			const generatingMessage: Message = {
+				id: `generating-${Date.now()}`,
+				role: "model",
+				text: "🎬 Generating video... This may take a few minutes.",
+				mediaType: "TEXT",
+				createdAt: new Date(),
+			};
+			setMessages((prev) => [...prev, generatingMessage]);
+
+			// Generate video
+			const response = await fetch("/api/chat/generate-video", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					conversationId,
+					prompt: currentInput,
+					model: videoModel,
+					aspectRatio,
+					resolution,
+					referenceImage: currentRefImage
+						? { base64: currentRefImage, mimeType: "image/jpeg" }
+						: undefined,
+				}),
+			});
+
+			const data = await response.json();
+
+			// Remove temporary messages (user and generating)
+			setMessages((prev) =>
+				prev.filter(
+					(msg) => msg.id !== userMessage.id && msg.id !== generatingMessage.id
+				)
+			);
+
+			if (response.ok && data.success) {
+				// Refresh conversation to show new messages from DB
+				if (conversationId) {
+					await loadConversation(conversationId);
+				}
+				// Clear reference image after generation
+				setReferenceImage(null);
+			} else {
+				throw new Error(data.error || "Video generation failed");
+			}
+		} catch (error) {
+			console.error("Video generation error:", error);
+			const errorMessage: Message = {
+				id: `error-${Date.now()}`,
+				role: "model",
+				text: "❌ Sorry, video generation failed. Please try again.",
+				mediaType: "TEXT",
+				createdAt: new Date(),
+			};
+			setMessages((prev) => [...prev, errorMessage]);
+		} finally {
+			setIsGenerating(false);
+		}
+	};
+
+	const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		// Convert to base64
+		const reader = new FileReader();
+		reader.onload = () => {
+			const base64 = reader.result?.toString().split(",")[1];
+			if (base64) {
+				setReferenceImage(base64);
+			}
+		};
+		reader.readAsDataURL(file);
+	};
+
+	const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+
+		for (let i = 0; i < items.length; i++) {
+			if (items[i].type.indexOf("image") !== -1) {
+				e.preventDefault();
+				const file = items[i].getAsFile();
+				if (file) {
+					const reader = new FileReader();
+					reader.onload = () => {
+						const base64 = reader.result?.toString().split(",")[1];
+						if (base64) {
+							setReferenceImage(base64);
+							// Switch to appropriate mode if not already
+							if (chatMode === "text") {
+								setChatMode("image");
+								setImageModel("nano");
+							}
+						}
+					};
+					reader.readAsDataURL(file);
+				}
+				break;
+			}
+		}
+	};
+
 	const handleNewChat = () => {
 		setMessages([]);
 		setActiveConversationId(null);
+		setReferenceImage(null);
 	};
 
 	const handleDeleteConversation = async (conversationId: string) => {
@@ -786,8 +1076,82 @@ export default function ChatPage() {
 												onMouseEnter={() => setHoveredMessage(message.id)}
 												onMouseLeave={() => setHoveredMessage(null)}
 											>
+												{/* Render media content (images/videos) */}
+												{message.mediaType === "IMAGE" && message.imageUrl && (
+													<div className="mb-3">
+														<img
+															src={message.imageUrl}
+															alt="Generated image"
+															className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+															onClick={() =>
+																setLightboxImage(message.imageUrl!)
+															}
+														/>
+														<div className="flex gap-2 mt-2">
+															<button
+																onClick={() => {
+																	const link = document.createElement("a");
+																	link.href = message.imageUrl!;
+																	link.download = `amitymate-image-${Date.now()}.jpg`;
+																	link.click();
+																}}
+																className="text-xs px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/30 rounded-lg flex items-center gap-1.5 transition-colors"
+															>
+																<Download className="w-3 h-3" />
+																Download
+															</button>
+															<button
+																onClick={() =>
+																	setLightboxImage(message.imageUrl!)
+																}
+																className="text-xs px-3 py-1.5 bg-gray-700/50 hover:bg-gray-700 rounded-lg flex items-center gap-1.5 transition-colors"
+															>
+																<Maximize2 className="w-3 h-3" />
+																View Full Size
+															</button>
+														</div>
+													</div>
+												)}
+
+												{message.mediaType === "VIDEO" && message.videoUrl && (
+													<div className="mb-3">
+														<video
+															src={message.videoUrl}
+															controls
+															className="rounded-lg max-w-full h-auto"
+														/>
+														<div className="flex gap-2 mt-2">
+															<a
+																href={message.videoUrl}
+																download={`amitymate-video-${Date.now()}.mp4`}
+																className="text-xs px-3 py-1.5 bg-violet-600/20 hover:bg-violet-600/30 rounded-lg flex items-center gap-1.5 transition-colors"
+															>
+																<Download className="w-3 h-3" />
+																Download Video
+															</a>
+														</div>
+													</div>
+												)}
+
 												{message.role === "user" ? (
-													<p className="whitespace-pre-wrap">{message.text}</p>
+													<>
+														{/* Show reference image if present */}
+														{message.imageUrl && (
+															<div className="mb-3 border-2 border-white/20 rounded-lg overflow-hidden">
+																<img
+																	src={message.imageUrl}
+																	alt="Reference image"
+																	className="w-full max-w-sm h-auto"
+																/>
+																<div className="bg-white/10 px-2 py-1 text-xs">
+																	📎 Reference Image
+																</div>
+															</div>
+														)}
+														<p className="whitespace-pre-wrap">
+															{message.text}
+														</p>
+													</>
 												) : (
 													<>
 														<div className="prose prose-invert prose-sm max-w-none">
@@ -1089,79 +1453,206 @@ export default function ChatPage() {
 									: "max-w-full px-4"
 							)}
 						>
-							{/* Model Selection */}
-							<div className="flex items-center justify-between mb-3">
-								<div className="flex items-center gap-2">
-									<span className="text-sm text-gray-400">Model:</span>
-									<div className="flex gap-1 bg-gray-900/50 p-1 rounded-lg">
-										<button
-											onClick={() => setSelectedModel("fast")}
-											className={cn(
-												"px-3 py-1.5 text-sm rounded-md transition-all",
-												selectedModel === "fast"
-													? "bg-violet-600 text-white font-medium"
-													: "text-gray-400 hover:text-white"
-											)}
+							{/* Compact Mode Selector - Gemini Style */}
+							<div className="flex items-center gap-3 mb-2 flex-wrap">
+								<select
+									value={chatMode}
+									onChange={(e) => setChatMode(e.target.value as ChatMode)}
+									className="bg-gray-900/50 border border-gray-800 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-violet-500 transition-colors cursor-pointer"
+								>
+									<option value="text">💬 Text Chat</option>
+									<option value="image">🎨 Create Images</option>
+									<option value="video">🎬 Create Videos</option>
+								</select>
+
+								{/* Text Mode Options */}
+								{chatMode === "text" && (
+									<select
+										value={selectedModel}
+										onChange={(e) =>
+											setSelectedModel(e.target.value as "fast" | "advanced")
+										}
+										className="bg-gray-900/50 border border-gray-800 text-gray-400 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-violet-500 transition-colors"
+									>
+										<option value="fast">⚡ Gemini 2.5 Flash</option>
+										<option value="advanced">🧠 Gemini 2.5 Pro</option>
+									</select>
+								)}
+
+								{/* Image Mode Options */}
+								{chatMode === "image" && (
+									<div className="flex items-center gap-2 flex-wrap">
+										<select
+											value={imageModel}
+											onChange={(e) =>
+												setImageModel(e.target.value as ImageModel)
+											}
+											className="bg-gray-900/50 border border-gray-800 text-gray-400 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-purple-500 transition-colors"
 										>
-											<div className="flex items-center gap-1">
-												<Sparkles className="w-3.5 h-3.5" />
-												Fast
-											</div>
-										</button>
-										<button
-											onClick={() => setSelectedModel("advanced")}
-											className={cn(
-												"px-3 py-1.5 text-sm rounded-md transition-all",
-												selectedModel === "advanced"
-													? "bg-purple-600 text-white font-medium"
-													: "text-gray-400 hover:text-white"
-											)}
+											<option value="imagen">🎨 Imagen 4.0</option>
+											<option value="nano">⚡ Nano Banana</option>
+										</select>
+										<span className="text-gray-700">|</span>
+										<select
+											value={aspectRatio}
+											onChange={(e) =>
+												setAspectRatio(e.target.value as AspectRatio)
+											}
+											className="bg-gray-900/50 border border-gray-800 text-gray-400 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-purple-500 transition-colors"
 										>
-											<div className="flex items-center gap-1">
-												<Sparkles className="w-3.5 h-3.5" />
-												Advanced
-											</div>
+											<option value="1:1">□ 1:1</option>
+											<option value="4:3">▭ 4:3</option>
+											<option value="16:9">▬ 16:9</option>
+										</select>
+										{imageModel === "nano" && (
+											<>
+												<span className="text-gray-700">|</span>
+												<input
+													ref={fileInputRef}
+													type="file"
+													accept="image/*"
+													onChange={handleFileUpload}
+													className="hidden"
+												/>
+												<button
+													onClick={() => fileInputRef.current?.click()}
+													className="text-xs px-2 py-1 bg-purple-600/20 hover:bg-purple-600/30 rounded-lg flex items-center gap-1 transition-colors"
+													title="Upload reference image"
+												>
+													<ImageIcon className="w-3 h-3" />
+													Reference
+												</button>
+											</>
+										)}
+									</div>
+								)}
+
+								{/* Video Mode Options */}
+								{chatMode === "video" && (
+									<div className="flex items-center gap-2 flex-wrap">
+										<select
+											value={videoModel}
+											onChange={(e) =>
+												setVideoModel(e.target.value as VideoModel)
+											}
+											className="bg-gray-900/50 border border-gray-800 text-gray-400 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-pink-500 transition-colors"
+										>
+											<option value="fast">⚡ Veo 3.1 Fast</option>
+											<option value="hq">💎 Veo 3.1 HQ</option>
+										</select>
+										<span className="text-gray-700">|</span>
+										<select
+											value={aspectRatio}
+											onChange={(e) =>
+												setAspectRatio(e.target.value as AspectRatio)
+											}
+											className="bg-gray-900/50 border border-gray-800 text-gray-400 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-pink-500 transition-colors"
+										>
+											<option value="16:9">▬ 16:9 Landscape</option>
+											<option value="9:16">▮ 9:16 Portrait</option>
+										</select>
+										<span className="text-gray-700">|</span>
+										<select
+											value={resolution}
+											onChange={(e) =>
+												setResolution(e.target.value as Resolution)
+											}
+											className="bg-gray-900/50 border border-gray-800 text-gray-400 text-xs rounded-lg px-2 py-1 focus:outline-none focus:border-pink-500 transition-colors"
+										>
+											<option value="720p">📺 720p</option>
+											<option value="1080p">🎬 1080p</option>
+										</select>
+										<span className="text-gray-700">|</span>
+										<input
+											ref={fileInputRef}
+											type="file"
+											accept="image/*"
+											onChange={handleFileUpload}
+											className="hidden"
+										/>
+										<button
+											onClick={() => fileInputRef.current?.click()}
+											className="text-xs px-2 py-1 bg-pink-600/20 hover:bg-pink-600/30 rounded-lg flex items-center gap-1 transition-colors"
+											title="Upload reference image"
+										>
+											<ImageIcon className="w-3 h-3" />
+											Reference
 										</button>
 									</div>
-								</div>
-								<span className="text-xs text-gray-500">
-									{selectedModel === "fast"
-										? "Gemini 2.5 Flash - Quick responses"
-										: "Gemini 2.5 Pro - Deep reasoning"}
-								</span>
+								)}
 							</div>
 
-							<div className="relative flex items-end gap-2 bg-gray-900/50 rounded-2xl border border-gray-800 focus-within:border-violet-500 transition-colors">
-								<textarea
-									ref={textareaRef}
-									value={inputText}
-									onChange={handleInputChange}
-									onKeyDown={handleKeyDown}
-									placeholder="Ask about your exams, subjects, or study tips..."
-									rows={1}
-									className="flex-1 bg-transparent text-white placeholder-gray-500 px-4 py-3 resize-none focus:outline-none max-h-[200px] overflow-y-auto"
-								/>
-								<button
-									onClick={handleSend}
-									disabled={!inputText.trim() || isTyping}
-									className={cn(
-										"m-2 p-2 rounded-full transition-all",
-										inputText.trim() && !isTyping
-											? "bg-violet-600 hover:bg-violet-500 text-white"
-											: "bg-gray-800 text-gray-600 cursor-not-allowed"
-									)}
-								>
-									{isTyping ? (
-										<Loader2 className="w-5 h-5 animate-spin" />
-									) : (
-										<Send className="w-5 h-5" />
-									)}
-								</button>
+							<div className="relative bg-gray-900/50 rounded-2xl border border-gray-800 focus-within:border-violet-500 transition-colors">
+								<div className="flex items-end gap-2">
+									{/* Compact Image Chip - Gemini Style */}
+									{referenceImage &&
+										(chatMode === "image" || chatMode === "video") && (
+											<div className="ml-2 mb-2 flex-shrink-0">
+												<div className="relative inline-flex items-center gap-1.5 px-2 py-1 bg-violet-600/20 border border-violet-500/30 rounded-full group hover:bg-violet-600/30 transition-colors">
+													<img
+														src={`data:image/png;base64,${referenceImage}`}
+														alt="Reference"
+														className="h-5 w-5 object-cover rounded-full"
+													/>
+													<span className="text-[10px] text-violet-300 font-medium">
+														Image
+													</span>
+													<button
+														onClick={() => setReferenceImage(null)}
+														className="p-0.5 rounded-full hover:bg-red-500/50 transition-colors"
+													>
+														<X className="w-3 h-3 text-gray-300" />
+													</button>
+												</div>
+											</div>
+										)}
+
+									<textarea
+										ref={textareaRef}
+										value={inputText}
+										onChange={handleInputChange}
+										onKeyDown={handleKeyDown}
+										onPaste={handlePaste}
+										placeholder={
+											chatMode === "text"
+												? "Ask me anything..."
+												: chatMode === "image"
+												? "Describe your image..."
+												: "Describe your video..."
+										}
+										rows={1}
+										className="flex-1 bg-transparent text-white placeholder-gray-500 px-4 py-3 resize-none focus:outline-none max-h-[120px] overflow-y-auto text-sm"
+									/>
+									<button
+										onClick={handleSend}
+										disabled={!inputText.trim() || isTyping || isGenerating}
+										className={cn(
+											"m-2 p-2.5 rounded-lg transition-all flex-shrink-0",
+											inputText.trim() && !isTyping && !isGenerating
+												? chatMode === "image"
+													? "bg-purple-600 hover:bg-purple-500 text-white"
+													: chatMode === "video"
+													? "bg-pink-600 hover:bg-pink-500 text-white"
+													: "bg-violet-600 hover:bg-violet-500 text-white"
+												: "bg-gray-800 text-gray-600 cursor-not-allowed"
+										)}
+									>
+										{isTyping || isGenerating ? (
+											<Loader2 className="w-4 h-4 animate-spin" />
+										) : chatMode === "image" ? (
+											<ImageIcon className="w-4 h-4" />
+										) : chatMode === "video" ? (
+											<Video className="w-4 h-4" />
+										) : (
+											<Send className="w-4 h-4" />
+										)}
+									</button>
+								</div>
+								<p className="text-xs text-gray-500 text-center mt-2">
+									AI may display inaccurate info. Always verify exam-related
+									responses.
+								</p>
 							</div>
-							<p className="text-xs text-gray-500 text-center mt-2">
-								AI may display inaccurate info. Always verify exam-related
-								responses.
-							</p>
 						</div>
 					</div>
 				</div>
@@ -1206,6 +1697,53 @@ export default function ChatPage() {
 								<MemoryManager compact={false} />
 							</div>
 						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
+
+			{/* Image Lightbox */}
+			<AnimatePresence>
+				{lightboxImage && (
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0 }}
+						className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+						onClick={() => setLightboxImage(null)}
+					>
+						<motion.div
+							initial={{ scale: 0.9 }}
+							animate={{ scale: 1 }}
+							exit={{ scale: 0.9 }}
+							className="relative max-w-7xl max-h-[90vh]"
+							onClick={(e) => e.stopPropagation()}
+						>
+							<button
+								onClick={() => setLightboxImage(null)}
+								className="absolute -top-12 right-0 p-2 rounded-lg bg-gray-800/80 hover:bg-gray-700 transition-colors"
+							>
+								<X className="w-6 h-6" />
+							</button>
+							<img
+								src={lightboxImage}
+								alt="Full size"
+								className="max-w-full max-h-[90vh] rounded-xl shadow-2xl"
+							/>
+							<div className="absolute -bottom-12 left-0 right-0 flex justify-center gap-3">
+								<button
+									onClick={() => {
+										const link = document.createElement("a");
+										link.href = lightboxImage;
+										link.download = `amitymate-image-${Date.now()}.jpg`;
+										link.click();
+									}}
+									className="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg flex items-center gap-2 transition-colors"
+								>
+									<Download className="w-4 h-4" />
+									Download
+								</button>
+							</div>
+						</motion.div>
 					</motion.div>
 				)}
 			</AnimatePresence>
