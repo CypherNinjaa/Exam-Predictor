@@ -7,8 +7,6 @@ import { useUser } from "@clerk/nextjs";
 import {
 	Home,
 	LayoutDashboard,
-	Upload,
-	Sparkles,
 	Shield,
 	User,
 	BookText,

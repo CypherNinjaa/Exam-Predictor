@@ -7,6 +7,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Navbar, BottomNav, MobileHeader } from "@/components/layout";
 import { Button, Card } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import MemoryManager from "@/components/memory/MemoryManager";
+import ReactMarkdown from "react-markdown";
+import { useUser } from "@clerk/nextjs";
+import Image from "next/image";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import rehypeRaw from "rehype-raw";
+import "highlight.js/styles/github-dark.css";
 import {
 	Menu,
 	Plus,
@@ -21,6 +29,17 @@ import {
 	X,
 	ChevronDown,
 	ChevronUp,
+	ChevronLeft,
+	Copy,
+	Check,
+	RotateCw,
+	ThumbsUp,
+	ThumbsDown,
+	Share2,
+	MoreVertical,
+	Pencil,
+	Settings,
+	Brain,
 } from "lucide-react";
 
 interface Message {
@@ -60,6 +79,7 @@ const SUGGESTIONS = [
 ];
 
 export default function ChatPage() {
+	const { user } = useUser();
 	const [isHeaderVisible, setIsHeaderVisible] = useState(true);
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 	const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -68,9 +88,22 @@ export default function ChatPage() {
 	>(null);
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [inputText, setInputText] = useState("");
+	const [promptHistory, setPromptHistory] = useState<string[]>([]);
+	const [historyIndex, setHistoryIndex] = useState(-1);
 	const [isTyping, setIsTyping] = useState(false);
 	const [isLoadingConversations, setIsLoadingConversations] = useState(true);
 	const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+	const [selectedModel, setSelectedModel] = useState<"fast" | "advanced">(
+		"fast"
+	);
+	const [copiedCode, setCopiedCode] = useState<string | null>(null);
+	const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
+	const [editingConversation, setEditingConversation] = useState<string | null>(
+		null
+	);
+	const [editTitle, setEditTitle] = useState("");
+	const [hoveredMessage, setHoveredMessage] = useState<string | null>(null);
+	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -136,6 +169,11 @@ export default function ChatPage() {
 
 		setMessages((prev) => [...prev, userMessage]);
 		const currentInput = inputText;
+
+		// Add to prompt history
+		setPromptHistory((prev) => [currentInput, ...prev].slice(0, 50)); // Keep last 50 prompts
+		setHistoryIndex(-1);
+
 		setInputText("");
 		if (textareaRef.current) {
 			textareaRef.current.style.height = "auto";
@@ -151,6 +189,7 @@ export default function ChatPage() {
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
 						title: currentInput.slice(0, 50),
+						modelUsed: selectedModel,
 					}),
 				});
 
@@ -236,18 +275,140 @@ export default function ChatPage() {
 		textareaRef.current?.focus();
 	};
 
-	const handleKeyDown = (e: React.KeyboardEvent) => {
+	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			handleSend();
+		} else if (e.key === "ArrowUp") {
+			// Navigate to previous prompt (like GitHub Copilot)
+			console.log(
+				"ArrowUp pressed, history length:",
+				promptHistory.length,
+				"current index:",
+				historyIndex
+			);
+			if (promptHistory.length > 0) {
+				e.preventDefault();
+				const newIndex = Math.min(historyIndex + 1, promptHistory.length - 1);
+				console.log("Loading history at index:", newIndex);
+				setHistoryIndex(newIndex);
+				const historyText = promptHistory[newIndex];
+				console.log("History text:", historyText);
+				setInputText(historyText);
+				// Move cursor to end after state updates
+				requestAnimationFrame(() => {
+					if (textareaRef.current) {
+						textareaRef.current.selectionStart = historyText.length;
+						textareaRef.current.selectionEnd = historyText.length;
+						// Trigger resize
+						textareaRef.current.style.height = "auto";
+						textareaRef.current.style.height = `${Math.min(
+							textareaRef.current.scrollHeight,
+							200
+						)}px`;
+					}
+				});
+			}
+		} else if (e.key === "ArrowDown") {
+			// Navigate to next prompt
+			if (historyIndex >= 0) {
+				e.preventDefault();
+				if (historyIndex > 0) {
+					const newIndex = historyIndex - 1;
+					setHistoryIndex(newIndex);
+					const historyText = promptHistory[newIndex];
+					setInputText(historyText);
+					requestAnimationFrame(() => {
+						if (textareaRef.current) {
+							textareaRef.current.selectionStart = historyText.length;
+							textareaRef.current.selectionEnd = historyText.length;
+							textareaRef.current.style.height = "auto";
+							textareaRef.current.style.height = `${Math.min(
+								textareaRef.current.scrollHeight,
+								200
+							)}px`;
+						}
+					});
+				} else if (historyIndex === 0) {
+					// Go back to empty input
+					setHistoryIndex(-1);
+					setInputText("");
+					requestAnimationFrame(() => {
+						if (textareaRef.current) {
+							textareaRef.current.style.height = "auto";
+						}
+					});
+				}
+			}
 		}
 	};
 
 	const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		setInputText(e.target.value);
+		// Reset history navigation when user types
+		if (historyIndex !== -1) {
+			setHistoryIndex(-1);
+		}
 		// Auto-resize textarea
 		e.target.style.height = "auto";
 		e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+	};
+
+	const copyToClipboard = async (text: string, id: string) => {
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopiedCode(id);
+			setTimeout(() => setCopiedCode(null), 2000);
+		} catch (err) {
+			console.error("Failed to copy:", err);
+		}
+	};
+
+	const copyMessage = async (text: string, id: string) => {
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopiedMessage(id);
+			setTimeout(() => setCopiedMessage(null), 2000);
+		} catch (err) {
+			console.error("Failed to copy:", err);
+		}
+	};
+
+	const handleRegenerateResponse = async () => {
+		if (messages.length < 2) return;
+		const lastUserMessage = messages
+			.slice()
+			.reverse()
+			.find((m) => m.role === "user");
+		if (lastUserMessage) {
+			// Remove last AI response
+			setMessages((prev) =>
+				prev.filter(
+					(m) => m.role !== "model" || m.id !== messages[messages.length - 1].id
+				)
+			);
+			// Resend
+			setInputText(lastUserMessage.text);
+			setTimeout(() => handleSend(), 100);
+		}
+	};
+
+	const handleRenameConversation = async (convId: string, newTitle: string) => {
+		try {
+			const response = await fetch(`/api/chat/conversations/${convId}`, {
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: newTitle }),
+			});
+			if (response.ok) {
+				setConversations((prev) =>
+					prev.map((c) => (c.id === convId ? { ...c, title: newTitle } : c))
+				);
+				setEditingConversation(null);
+			}
+		} catch (error) {
+			console.error("Failed to rename conversation:", error);
+		}
 	};
 
 	return (
@@ -332,20 +493,56 @@ export default function ChatPage() {
 											<div className="flex items-start gap-2">
 												<MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0" />
 												<div className="flex-1 min-w-0">
-													<p className="text-sm truncate">{conv.title}</p>
-													<p className="text-xs text-gray-500 mt-0.5">
-														{new Date(conv.updatedAt).toLocaleDateString()}
-													</p>
+													{editingConversation === conv.id ? (
+														<input
+															type="text"
+															value={editTitle}
+															onChange={(e) => setEditTitle(e.target.value)}
+															onBlur={() =>
+																handleRenameConversation(conv.id, editTitle)
+															}
+															onKeyDown={(e) => {
+																if (e.key === "Enter") {
+																	handleRenameConversation(conv.id, editTitle);
+																}
+																if (e.key === "Escape") {
+																	setEditingConversation(null);
+																}
+															}}
+															onClick={(e) => e.stopPropagation()}
+															autoFocus
+															className="w-full bg-gray-700 text-white px-2 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+														/>
+													) : (
+														<>
+															<p className="text-sm truncate">{conv.title}</p>
+															<p className="text-xs text-gray-500 mt-0.5">
+																{new Date(conv.updatedAt).toLocaleDateString()}
+															</p>
+														</>
+													)}
 												</div>
-												<button
-													onClick={(e) => {
-														e.stopPropagation();
-														handleDeleteConversation(conv.id);
-													}}
-													className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-red-400 transition-opacity"
-												>
-													<Trash2 className="w-4 h-4" />
-												</button>
+												<div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+													<button
+														onClick={(e) => {
+															e.stopPropagation();
+															setEditingConversation(conv.id);
+															setEditTitle(conv.title);
+														}}
+														className="p-1 rounded hover:bg-violet-500/20 text-violet-400"
+													>
+														<Pencil className="w-3.5 h-3.5" />
+													</button>
+													<button
+														onClick={(e) => {
+															e.stopPropagation();
+															handleDeleteConversation(conv.id);
+														}}
+														className="p-1 rounded hover:bg-red-500/20 text-red-400"
+													>
+														<Trash2 className="w-3.5 h-3.5" />
+													</button>
+												</div>
 											</div>
 										</div>
 									))
@@ -353,12 +550,28 @@ export default function ChatPage() {
 							</div>
 
 							{/* Sidebar Footer */}
-							<div className="p-4 border-t border-gray-800">
+							<div className="p-4 border-t border-gray-800 space-y-2">
+								{/* Memory Settings Button */}
+								<button
+									onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+									className={cn(
+										"w-full flex items-center gap-3 p-3 rounded-lg transition-all",
+										isSettingsOpen
+											? "bg-violet-500/20 text-violet-300"
+											: "text-gray-400 hover:text-white hover:bg-gray-800/50"
+									)}
+								>
+									<Brain className="w-5 h-5" />
+									<span className="text-sm font-medium">Memory Settings</span>
+								</button>
+
+								{/* Collapse Sidebar Button */}
 								<button
 									onClick={() => setIsSidebarOpen(false)}
-									className="w-full p-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors"
+									className="w-full flex items-center justify-center p-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-colors"
+									title="Collapse sidebar"
 								>
-									<X className="w-4 h-4 mx-auto" />
+									<ChevronLeft className="w-4 h-4" />
 								</button>
 							</div>
 						</motion.aside>
@@ -436,23 +649,285 @@ export default function ChatPage() {
 											)}
 										>
 											{message.role === "model" && (
-												<div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-													<Sparkles className="w-4 h-4 text-white" />
+												<div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+													<Image
+														src="/Animating_Profile_DP_for_AI_Chat.gif"
+														alt="AI"
+														width={32}
+														height={32}
+														className="w-full h-full object-cover"
+														unoptimized
+													/>
 												</div>
 											)}
 											<div
 												className={cn(
-													"max-w-[80%] rounded-2xl px-4 py-3",
+													"max-w-[80%] rounded-2xl px-4 py-3 relative group/message",
 													message.role === "user"
 														? "bg-violet-600 text-white ml-auto"
 														: "bg-gray-800/50 text-gray-100"
 												)}
+												onMouseEnter={() => setHoveredMessage(message.id)}
+												onMouseLeave={() => setHoveredMessage(null)}
 											>
-												<p className="whitespace-pre-wrap">{message.text}</p>
+												{message.role === "user" ? (
+													<p className="whitespace-pre-wrap">{message.text}</p>
+												) : (
+													<>
+														<div className="prose prose-invert prose-sm max-w-none">
+															<ReactMarkdown
+																remarkPlugins={[remarkGfm]}
+																rehypePlugins={[rehypeHighlight, rehypeRaw]}
+																components={{
+																	// Custom styling for markdown elements
+																	h1: ({ node, ...props }) => (
+																		<h1
+																			className="text-2xl font-bold mb-3 text-white"
+																			{...props}
+																		/>
+																	),
+																	h2: ({ node, ...props }) => (
+																		<h2
+																			className="text-xl font-bold mb-2 mt-4 text-violet-300"
+																			{...props}
+																		/>
+																	),
+																	h3: ({ node, ...props }) => (
+																		<h3
+																			className="text-lg font-semibold mb-2 mt-3 text-purple-300"
+																			{...props}
+																		/>
+																	),
+																	p: ({ node, ...props }) => (
+																		<p
+																			className="mb-2 leading-relaxed"
+																			{...props}
+																		/>
+																	),
+																	ul: ({ node, ...props }) => (
+																		<ul
+																			className="list-disc list-inside mb-2 space-y-1"
+																			{...props}
+																		/>
+																	),
+																	ol: ({ node, ...props }) => (
+																		<ol
+																			className="list-decimal list-inside mb-2 space-y-1"
+																			{...props}
+																		/>
+																	),
+																	li: ({ node, ...props }) => (
+																		<li className="ml-2" {...props} />
+																	),
+																	code: ({
+																		node,
+																		className,
+																		children,
+																		...props
+																	}) => {
+																		const match = /language-(\w+)/.exec(
+																			className || ""
+																		);
+																		const codeContent = String(
+																			children
+																		).replace(/\n$/, "");
+																		const codeId = `${
+																			message.id
+																		}-${Math.random()}`;
+
+																		return match ? (
+																			// Inline code (no copy button needed)
+																			<code
+																				className="bg-gray-900 text-violet-300 px-1.5 py-0.5 rounded text-sm"
+																				{...props}
+																			>
+																				{children}
+																			</code>
+																		) : (
+																			// Inline code
+																			<code
+																				className="bg-gray-900 text-violet-300 px-1.5 py-0.5 rounded text-sm"
+																				{...props}
+																			>
+																				{children}
+																			</code>
+																		);
+																	},
+																	pre: ({ node, children, ...props }) => {
+																		// Extract code content for copy functionality
+																		const codeElement = React.Children.toArray(
+																			children
+																		).find((child: any) =>
+																			child?.props?.className?.includes(
+																				"language-"
+																			)
+																		) as any;
+																		const codeContent = codeElement?.props
+																			?.children
+																			? String(
+																					codeElement.props.children
+																			  ).replace(/\n$/, "")
+																			: "";
+																		// Use a stable ID based on message ID and content hash
+																		const codeId = `${message.id}-${codeContent.length}`;
+																		const language =
+																			codeElement?.props?.className?.match(
+																				/language-(\w+)/
+																			)?.[1] || "text";
+
+																		return (
+																			<div className="relative group/code mb-4">
+																				<div className="flex items-center justify-between bg-gray-800 px-4 py-2 rounded-t-lg border-b border-gray-700">
+																					<span className="text-xs text-gray-400 uppercase font-mono">
+																						{language}
+																					</span>
+																					<button
+																						onClick={() =>
+																							copyToClipboard(
+																								codeContent,
+																								codeId
+																							)
+																						}
+																						className={cn(
+																							"flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-all",
+																							copiedCode === codeId
+																								? "bg-green-600 text-white"
+																								: "bg-gray-700 hover:bg-gray-600 text-gray-400 hover:text-white"
+																						)}
+																						title={
+																							copiedCode === codeId
+																								? "Copied!"
+																								: "Copy code"
+																						}
+																					>
+																						{copiedCode === codeId ? (
+																							<>
+																								<Check className="w-3.5 h-3.5" />
+																								<span className="text-xs font-medium">
+																									Copied!
+																								</span>
+																							</>
+																						) : (
+																							<Copy className="w-3.5 h-3.5" />
+																						)}
+																					</button>
+																				</div>
+																				<pre
+																					className="bg-gray-900 rounded-b-lg p-4 overflow-x-auto"
+																					{...props}
+																				>
+																					{children}
+																				</pre>
+																			</div>
+																		);
+																	},
+																	blockquote: ({ node, ...props }) => (
+																		<blockquote
+																			className="border-l-4 border-violet-500 pl-4 py-2 my-2 italic text-gray-300"
+																			{...props}
+																		/>
+																	),
+																	table: ({ node, ...props }) => (
+																		<div className="overflow-x-auto mb-2">
+																			<table
+																				className="min-w-full border border-gray-700 rounded"
+																				{...props}
+																			/>
+																		</div>
+																	),
+																	th: ({ node, ...props }) => (
+																		<th
+																			className="border border-gray-700 px-3 py-2 bg-gray-800 font-semibold"
+																			{...props}
+																		/>
+																	),
+																	td: ({ node, ...props }) => (
+																		<td
+																			className="border border-gray-700 px-3 py-2"
+																			{...props}
+																		/>
+																	),
+																	strong: ({ node, ...props }) => (
+																		<strong
+																			className="font-bold text-white"
+																			{...props}
+																		/>
+																	),
+																	em: ({ node, ...props }) => (
+																		<em
+																			className="italic text-violet-300"
+																			{...props}
+																		/>
+																	),
+																	a: ({ node, ...props }) => (
+																		<a
+																			className="text-violet-400 hover:text-violet-300 underline"
+																			target="_blank"
+																			rel="noopener noreferrer"
+																			{...props}
+																		/>
+																	),
+																}}
+															>
+																{message.text}
+															</ReactMarkdown>
+														</div>
+
+														{/* Message Actions - Only for AI messages */}
+														{hoveredMessage === message.id && (
+															<div className="absolute -bottom-8 left-0 flex items-center gap-1 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 shadow-lg">
+																<button
+																	onClick={() =>
+																		copyMessage(message.text, message.id)
+																	}
+																	className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
+																	title="Copy message"
+																>
+																	{copiedMessage === message.id ? (
+																		<Check className="w-3.5 h-3.5 text-green-400" />
+																	) : (
+																		<Copy className="w-3.5 h-3.5" />
+																	)}
+																</button>
+																<button
+																	onClick={() => handleRegenerateResponse()}
+																	className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
+																	title="Regenerate response"
+																>
+																	<RotateCw className="w-3.5 h-3.5" />
+																</button>
+																<button
+																	className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
+																	title="Good response"
+																>
+																	<ThumbsUp className="w-3.5 h-3.5" />
+																</button>
+																<button
+																	className="p-1.5 rounded-md hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
+																	title="Bad response"
+																>
+																	<ThumbsDown className="w-3.5 h-3.5" />
+																</button>
+															</div>
+														)}
+													</>
+												)}
 											</div>
 											{message.role === "user" && (
-												<div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-sm font-medium flex-shrink-0">
-													You
+												<div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+													{user?.imageUrl ? (
+														<Image
+															src={user.imageUrl}
+															alt={user.firstName || "User"}
+															width={32}
+															height={32}
+															className="w-full h-full object-cover"
+														/>
+													) : (
+														<div className="w-full h-full bg-violet-600 flex items-center justify-center text-sm font-medium text-white">
+															{user?.firstName?.charAt(0) || "U"}
+														</div>
+													)}
 												</div>
 											)}
 										</div>
@@ -461,8 +936,15 @@ export default function ChatPage() {
 
 								{isTyping && (
 									<div className="flex gap-4">
-										<div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-											<Sparkles className="w-4 h-4 text-white" />
+										<div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+											<Image
+												src="/Animating_Profile_DP_for_AI_Chat.gif"
+												alt="AI"
+												width={32}
+												height={32}
+												className="w-full h-full object-cover"
+												unoptimized
+											/>
 										</div>
 										<div className="bg-gray-800/50 rounded-2xl px-4 py-3">
 											<div className="flex gap-1">
@@ -482,6 +964,48 @@ export default function ChatPage() {
 					{/* Input Area */}
 					<div className="border-t border-gray-800 bg-background/80 backdrop-blur-sm p-4">
 						<div className="max-w-3xl mx-auto">
+							{/* Model Selection */}
+							<div className="flex items-center justify-between mb-3">
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-gray-400">Model:</span>
+									<div className="flex gap-1 bg-gray-900/50 p-1 rounded-lg">
+										<button
+											onClick={() => setSelectedModel("fast")}
+											className={cn(
+												"px-3 py-1.5 text-sm rounded-md transition-all",
+												selectedModel === "fast"
+													? "bg-violet-600 text-white font-medium"
+													: "text-gray-400 hover:text-white"
+											)}
+										>
+											<div className="flex items-center gap-1">
+												<Sparkles className="w-3.5 h-3.5" />
+												Fast
+											</div>
+										</button>
+										<button
+											onClick={() => setSelectedModel("advanced")}
+											className={cn(
+												"px-3 py-1.5 text-sm rounded-md transition-all",
+												selectedModel === "advanced"
+													? "bg-purple-600 text-white font-medium"
+													: "text-gray-400 hover:text-white"
+											)}
+										>
+											<div className="flex items-center gap-1">
+												<Sparkles className="w-3.5 h-3.5" />
+												Advanced
+											</div>
+										</button>
+									</div>
+								</div>
+								<span className="text-xs text-gray-500">
+									{selectedModel === "fast"
+										? "Gemini 2.5 Flash - Quick responses"
+										: "Gemini 2.5 Pro - Deep reasoning"}
+								</span>
+							</div>
+
 							<div className="relative flex items-end gap-2 bg-gray-900/50 rounded-2xl border border-gray-800 focus-within:border-violet-500 transition-colors">
 								<textarea
 									ref={textareaRef}
@@ -517,6 +1041,49 @@ export default function ChatPage() {
 					</div>
 				</div>
 			</div>
+
+			{/* Memory Settings Panel */}
+			<AnimatePresence>
+				{isSettingsOpen && (
+					<motion.div
+						initial={{ x: "100%" }}
+						animate={{ x: 0 }}
+						exit={{ x: "100%" }}
+						transition={{ type: "spring", damping: 25, stiffness: 200 }}
+						className="fixed top-0 right-0 h-full w-full md:w-[600px] bg-gray-900/98 backdrop-blur-xl border-l border-gray-800 z-[110] overflow-hidden"
+					>
+						<div className="h-full flex flex-col">
+							{/* Settings Header */}
+							<div className="flex items-center justify-between p-6 border-b border-gray-800">
+								<div className="flex items-center gap-3">
+									<div className="p-2 rounded-xl bg-violet-500/20">
+										<Brain className="w-5 h-5 text-violet-400" />
+									</div>
+									<div>
+										<h2 className="text-lg font-bold text-white">
+											Memory Settings
+										</h2>
+										<p className="text-xs text-gray-400">
+											Manage what AI remembers about you
+										</p>
+									</div>
+								</div>
+								<button
+									onClick={() => setIsSettingsOpen(false)}
+									className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+								>
+									<X className="w-5 h-5 text-gray-400" />
+								</button>
+							</div>
+
+							{/* Memory Manager */}
+							<div className="flex-1 overflow-hidden">
+								<MemoryManager compact={false} />
+							</div>
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
 
 			{/* Bottom Navigation (Mobile) */}
 			<div className="md:hidden">

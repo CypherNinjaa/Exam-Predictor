@@ -410,6 +410,7 @@ model User {
   predictionLogs  PredictionLog[]
   downloadLogs    DownloadLog[]
   conversations   ChatConversation[]
+  memories        UserMemory[]
   
   @@index([role])
   @@index([isBanned])
@@ -432,6 +433,64 @@ model ChatConversation {
   
   @@index([userId])
   @@index([updatedAt])
+}
+
+// ==================== AI MEMORY SYSTEM ====================
+
+enum MemoryCategory {
+  ACADEMIC      // Subjects, exams, study topics
+  PERSONAL      // Name, batch, course details
+  PREFERENCES   // Study preferences, communication style
+  GOALS         // Academic goals, target scores
+  STUDY_PATTERN // Study habits, best times, methods
+  OTHER         // Miscellaneous
+}
+
+enum MemoryImportance {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model UserMemory {
+  id          String           @id @default(cuid())
+  userId      String
+  
+  // Memory content
+  title       String           // Short title (e.g., "Preferred Study Time")
+  content     String           @db.Text // Actual memory (e.g., "Prefers studying late night 10 PM - 2 AM")
+  category    MemoryCategory   @default(OTHER)
+  importance  MemoryImportance @default(MEDIUM)
+  
+  // Metadata
+  keywords    String[]         // For search: ["study", "time", "night"]
+  relatedTo   String?          // Related entity ID (subjectId, examId, etc.)
+  
+  // Auto-detection
+  confidence  Float            @default(1.0) // AI confidence (0-1)
+  source      String           @default("user") // "user", "ai_detected", "admin"
+  sourceConversationId String? // Which chat conversation this came from
+  
+  // Usage tracking
+  timesUsed   Int              @default(0) // How many times AI used this memory
+  lastUsedAt  DateTime?        // When was it last used
+  
+  // Privacy & Control
+  isActive    Boolean          @default(true) // User can disable without deleting
+  
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([category])
+  @@index([importance])
+  @@index([isActive])
+  @@index([keywords])
+  @@index([lastUsedAt])
 }
 
 model ChatMessage {
