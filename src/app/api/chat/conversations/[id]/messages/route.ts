@@ -440,211 +440,243 @@ Remember: Your purpose is to empower students to learn, understand, and succeed.
 					? "gemini-2.5-pro" // Advanced reasoning
 					: "gemini-2.5-flash"; // Fast responses
 
-			// Build the full conversation with system context
-			const result = await genAI.models.generateContent({
-				model: modelName,
-				contents: message,
-				config: {
-					systemInstruction: systemPrompt,
-					temperature: 0.7, // Balanced creativity and consistency
-					topK: 40,
-					topP: 0.95,
-					maxOutputTokens: 4096, // Allow longer responses
+			// Create a streaming response
+			const encoder = new TextEncoder();
+			const stream = new ReadableStream({
+				async start(controller) {
+					try {
+						// Build the full conversation with system context
+						const result = await genAI.models.generateContentStream({
+							model: modelName,
+							contents: message,
+							config: {
+								systemInstruction: systemPrompt,
+								temperature: 0.7,
+								topK: 40,
+								topP: 0.95,
+								maxOutputTokens: 4096,
+							},
+						});
+
+						let fullResponse = "";
+
+						// Stream each chunk
+						for await (const chunk of result) {
+							const text = chunk.text || "";
+							fullResponse += text;
+
+							// Send chunk to client
+							controller.enqueue(
+								encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
+							);
+						}
+
+						// After streaming completes, save to database and handle memory
+						const aiResponse =
+							fullResponse ||
+							"I apologize, but I couldn't generate a response. Please try rephrasing your question.";
+
+						// Auto-detect and save memories
+						await handleMemoryDetection(aiResponse, message, userId, id);
+
+						// Save AI response to database
+						await prisma.chatMessage.create({
+							data: {
+								conversationId: id,
+								role: "model",
+								text: aiResponse,
+							},
+						});
+
+						// Update conversation timestamp
+						await prisma.chatConversation.update({
+							where: { id },
+							data: { updatedAt: new Date() },
+						});
+
+						// Log activity
+						await prisma.activityLog.create({
+							data: {
+								userId,
+								activityType: "CHAT_MESSAGE_SENT",
+								description: `Sent message in conversation ${id}`,
+								metadata: {
+									conversationId: id,
+									messageLength: message.length,
+									modelUsed: modelName,
+								},
+							},
+						});
+
+						// Send completion signal
+						controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+						controller.close();
+					} catch (error) {
+						console.error("Streaming error:", error);
+						controller.error(error);
+					}
 				},
 			});
 
-			const aiResponse =
-				result.text ||
-				"I apologize, but I couldn't generate a response. Please try rephrasing your question.";
-
-			// Auto-detect and save memories from the conversation
-			try {
-				// Extract memory suggestions from AI response
-				const memoryNoteRegex =
-					/💡\s*\*\*Memory Note\*\*:\s*I can remember that\s+(.+?)\s+for future conversations/i;
-				const memoryMatch = aiResponse.match(memoryNoteRegex);
-
-				if (memoryMatch) {
-					const memoryContent = memoryMatch[1].trim();
-
-					// Detect category and importance based on content
-					let category:
-						| "ACADEMIC"
-						| "PERSONAL"
-						| "PREFERENCES"
-						| "GOALS"
-						| "STUDY_PATTERN"
-						| "OTHER" = "OTHER";
-					let importance: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "MEDIUM";
-					let title = "User Information";
-					const lowerContent = memoryContent.toLowerCase();
-					const lowerMessage = message.toLowerCase();
-
-					// Detect name
-					if (
-						lowerContent.includes("name is") ||
-						lowerContent.includes("called") ||
-						lowerContent.includes("prefer to be called")
-					) {
-						category = "PERSONAL";
-						importance = "HIGH";
-						title = "Student Name";
-					}
-					// Detect academic info
-					else if (
-						lowerContent.includes("year") ||
-						lowerContent.includes("semester") ||
-						lowerContent.includes("batch") ||
-						lowerContent.includes("course") ||
-						lowerContent.includes("weak in") ||
-						lowerContent.includes("struggle with")
-					) {
-						category = "ACADEMIC";
-						importance = "MEDIUM";
-						title =
-							lowerContent.includes("weak") || lowerContent.includes("struggle")
-								? "Academic Challenge"
-								: "Academic Info";
-					}
-					// Detect preferences
-					else if (
-						lowerContent.includes("prefer") ||
-						lowerContent.includes("like") ||
-						lowerContent.includes("learning style") ||
-						lowerContent.includes("visual") ||
-						lowerContent.includes("explanation")
-					) {
-						category = "PREFERENCES";
-						importance = "MEDIUM";
-						title = "Learning Preference";
-					}
-					// Detect goals
-					else if (
-						lowerContent.includes("goal") ||
-						lowerContent.includes("target") ||
-						lowerContent.includes("want to") ||
-						lowerContent.includes("aim") ||
-						lowerContent.includes("score")
-					) {
-						category = "GOALS";
-						importance = "HIGH";
-						title = "Academic Goal";
-					}
-					// Detect study patterns
-					else if (
-						lowerContent.includes("study") ||
-						lowerContent.includes("morning") ||
-						lowerContent.includes("night") ||
-						lowerContent.includes("evening") ||
-						lowerContent.includes("routine")
-					) {
-						category = "STUDY_PATTERN";
-						importance = "MEDIUM";
-						title = "Study Pattern";
-					}
-
-					// Extract keywords from the message and memory content
-					const keywords = [
-						...new Set(
-							[...message.split(/\s+/), ...memoryContent.split(/\s+/)]
-								.filter((word) => word.length > 3)
-								.map((word) => word.toLowerCase().replace(/[^\w]/g, ""))
-								.filter(
-									(word) =>
-										![
-											"this",
-											"that",
-											"with",
-											"from",
-											"your",
-											"have",
-											"will",
-											"been",
-										].includes(word)
-								)
-								.slice(0, 5)
-						),
-					];
-
-					// Save memory automatically
-					await prisma.userMemory.create({
-						data: {
-							userId,
-							title,
-							content: memoryContent,
-							category,
-							importance,
-							keywords,
-							source: "ai_detected",
-							sourceConversationId: id,
-							isActive: true,
-							confidence: 0.85,
-						},
-					});
-
-					console.log(`Auto-saved memory: ${title} (${category})`);
-				}
-			} catch (memoryError) {
-				console.error("Failed to auto-save memory:", memoryError);
-				// Don't fail the whole request if memory saving fails
-			}
-
-			// Save AI response
-			const aiMessage = await prisma.chatMessage.create({
-				data: {
-					conversationId: id,
-					role: "model",
-					text: aiResponse,
+			return new Response(stream, {
+				headers: {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					Connection: "keep-alive",
 				},
 			});
-
-			// Update conversation timestamp
-			await prisma.chatConversation.update({
-				where: { id },
-				data: { updatedAt: new Date() },
-			});
-
-			// Log activity
-			await prisma.activityLog.create({
-				data: {
-					userId,
-					activityType: "CHAT_MESSAGE_SENT",
-					description: `Sent message in conversation: ${conversation.title}`,
-					metadata: {
-						conversationId: id,
-						messageLength: message.length,
-					},
-				},
-			});
-
-			return NextResponse.json({
-				id: aiMessage.id,
-				response: aiResponse,
-				createdAt: aiMessage.createdAt,
-			});
-		} catch (aiError) {
-			console.error("AI generation error:", aiError);
-
-			// Save error message
-			const errorMessage = await prisma.chatMessage.create({
-				data: {
-					conversationId: id,
-					role: "model",
-					text: "I apologize, but I'm having trouble generating a response right now. This could be due to API limits or configuration issues. Please try again later or contact support if the problem persists.",
-				},
-			});
-
-			return NextResponse.json({
-				id: errorMessage.id,
-				response: errorMessage.text,
-				createdAt: errorMessage.createdAt,
-			});
+		} catch (error) {
+			console.error("Chat error:", error);
+			return NextResponse.json(
+				{ error: "Failed to generate response" },
+				{ status: 500 }
+			);
 		}
 	} catch (error) {
-		console.error("Failed to send message:", error);
+		console.error("API error:", error);
 		return NextResponse.json(
-			{ error: "Failed to send message" },
+			{ error: "Internal server error" },
 			{ status: 500 }
 		);
+	}
+}
+
+// Helper function to handle memory detection
+async function handleMemoryDetection(
+	aiResponse: string,
+	message: string,
+	userId: string,
+	conversationId: string
+) {
+	try {
+		// Extract memory suggestions from AI response
+		const memoryNoteRegex =
+			/💡\s*\*\*Memory Note\*\*:\s*I can remember that\s+(.+?)\s+for future conversations/i;
+		const memoryMatch = aiResponse.match(memoryNoteRegex);
+
+		if (memoryMatch) {
+			const memoryContent = memoryMatch[1].trim();
+
+			// Detect category and importance based on content
+			let category:
+				| "ACADEMIC"
+				| "PERSONAL"
+				| "PREFERENCES"
+				| "GOALS"
+				| "STUDY_PATTERN"
+				| "OTHER" = "OTHER";
+			let importance: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "MEDIUM";
+			let title = "User Information";
+
+			const lowerContent = memoryContent.toLowerCase();
+			const lowerMessage = message.toLowerCase();
+
+			// Detect name
+			if (
+				lowerContent.includes("name is") ||
+				lowerContent.includes("called") ||
+				lowerContent.includes("prefer to be called")
+			) {
+				category = "PERSONAL";
+				importance = "HIGH";
+				title = "Student Name";
+			}
+			// Detect academic info
+			else if (
+				lowerContent.includes("year") ||
+				lowerContent.includes("semester") ||
+				lowerContent.includes("batch") ||
+				lowerContent.includes("course") ||
+				lowerContent.includes("weak in") ||
+				lowerContent.includes("struggle with")
+			) {
+				category = "ACADEMIC";
+				importance = "MEDIUM";
+				title =
+					lowerContent.includes("weak") || lowerContent.includes("struggle")
+						? "Academic Challenge"
+						: "Academic Info";
+			}
+			// Detect preferences
+			else if (
+				lowerContent.includes("prefer") ||
+				lowerContent.includes("like") ||
+				lowerContent.includes("learning style") ||
+				lowerContent.includes("visual") ||
+				lowerContent.includes("explanation")
+			) {
+				category = "PREFERENCES";
+				importance = "MEDIUM";
+				title = "Learning Preference";
+			}
+			// Detect goals
+			else if (
+				lowerContent.includes("goal") ||
+				lowerContent.includes("target") ||
+				lowerContent.includes("want to") ||
+				lowerContent.includes("aim") ||
+				lowerContent.includes("score")
+			) {
+				category = "GOALS";
+				importance = "HIGH";
+				title = "Academic Goal";
+			}
+			// Detect study patterns
+			else if (
+				lowerContent.includes("study") ||
+				lowerContent.includes("morning") ||
+				lowerContent.includes("night") ||
+				lowerContent.includes("evening") ||
+				lowerContent.includes("routine")
+			) {
+				category = "STUDY_PATTERN";
+				importance = "MEDIUM";
+				title = "Study Pattern";
+			}
+
+			// Extract keywords from the message and memory content
+			const keywords = [
+				...new Set(
+					[...message.split(/\s+/), ...memoryContent.split(/\s+/)]
+						.filter((word) => word.length > 3)
+						.map((word) => word.toLowerCase().replace(/[^\w]/g, ""))
+						.filter(
+							(word) =>
+								![
+									"this",
+									"that",
+									"with",
+									"from",
+									"your",
+									"have",
+									"will",
+									"been",
+								].includes(word)
+						)
+						.slice(0, 5)
+				),
+			];
+
+			// Save memory automatically
+			await prisma.userMemory.create({
+				data: {
+					userId,
+					title,
+					content: memoryContent,
+					category,
+					importance,
+					keywords,
+					source: "ai_detected",
+					sourceConversationId: conversationId,
+					isActive: true,
+					confidence: 0.85,
+				},
+			});
+
+			console.log(`Auto-saved memory: ${title} (${category})`);
+		}
+	} catch (memoryError) {
+		console.error("Failed to auto-save memory:", memoryError);
+		// Don't fail the whole request if memory saving fails
 	}
 }

@@ -104,6 +104,9 @@ export default function ChatPage() {
 	const [editTitle, setEditTitle] = useState("");
 	const [hoveredMessage, setHoveredMessage] = useState<string | null>(null);
 	const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+	const [chatWidth, setChatWidth] = useState<"narrow" | "wide" | "full">(
+		"narrow"
+	);
 
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -203,7 +206,7 @@ export default function ChatPage() {
 				}
 			}
 
-			// Send message
+			// Send message with streaming
 			if (conversationId) {
 				const response = await fetch(
 					`/api/chat/conversations/${conversationId}/messages`,
@@ -214,17 +217,64 @@ export default function ChatPage() {
 					}
 				);
 
-				if (response.ok) {
-					const data = await response.json();
-					const aiMessage: Message = {
-						id: data.id,
-						role: "model",
-						text: data.response,
-						createdAt: new Date(data.createdAt),
-					};
-					setMessages((prev) => [...prev, aiMessage]);
-				} else {
+				if (!response.ok) {
 					throw new Error("Failed to send message");
+				}
+
+				// Handle streaming response
+				const reader = response.body?.getReader();
+				const decoder = new TextDecoder();
+				let streamedText = "";
+
+				// Create initial AI message
+				const aiMessageId = `ai-${Date.now()}`;
+				const aiMessage: Message = {
+					id: aiMessageId,
+					role: "model",
+					text: "",
+					createdAt: new Date(),
+				};
+				setMessages((prev) => [...prev, aiMessage]);
+
+				if (reader) {
+					try {
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+
+							const chunk = decoder.decode(value, { stream: true });
+							const lines = chunk.split("\n");
+
+							for (const line of lines) {
+								if (line.startsWith("data: ")) {
+									const data = line.slice(6);
+									if (data === "[DONE]") {
+										setIsTyping(false);
+										break;
+									}
+
+									try {
+										const parsed = JSON.parse(data);
+										if (parsed.text) {
+											streamedText += parsed.text;
+											// Update message with streamed text
+											setMessages((prev) =>
+												prev.map((msg) =>
+													msg.id === aiMessageId
+														? { ...msg, text: streamedText }
+														: msg
+												)
+											);
+										}
+									} catch (e) {
+										// Ignore JSON parse errors
+									}
+								}
+							}
+						}
+					} catch (streamError) {
+						console.error("Stream reading error:", streamError);
+					}
 				}
 			}
 		} catch (error) {
@@ -426,6 +476,54 @@ export default function ChatPage() {
 				)}
 			</button>
 
+			{/* Width Toggle Button */}
+			<button
+				onClick={() => {
+					setChatWidth((prev) =>
+						prev === "narrow" ? "wide" : prev === "wide" ? "full" : "narrow"
+					);
+				}}
+				className="fixed top-4 right-16 z-[100] p-2 rounded-full bg-gray-800/80 backdrop-blur-sm border border-gray-700 hover:bg-gray-700 transition-colors"
+				title={`Chat width: ${
+					chatWidth === "narrow"
+						? "Narrow (3xl)"
+						: chatWidth === "wide"
+						? "Wide (5xl)"
+						: "Full width"
+				}`}
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+				>
+					{chatWidth === "narrow" && (
+						<>
+							<rect x="6" y="4" width="12" height="16" />
+							<path d="M9 9h6m-6 6h6" />
+						</>
+					)}
+					{chatWidth === "wide" && (
+						<>
+							<rect x="3" y="4" width="18" height="16" />
+							<path d="M7 9h10m-10 6h10" />
+						</>
+					)}
+					{chatWidth === "full" && (
+						<>
+							<rect x="2" y="4" width="20" height="16" />
+							<path d="M6 9h12m-12 6h12" />
+						</>
+					)}
+				</svg>
+			</button>
+
 			{/* Headers */}
 			{isHeaderVisible && (
 				<>
@@ -594,7 +692,16 @@ export default function ChatPage() {
 					<div className="flex-1 overflow-y-auto px-4 md:px-8 py-6">
 						{messages.length === 0 ? (
 							// Welcome Screen
-							<div className="max-w-3xl mx-auto">
+							<div
+								className={cn(
+									"mx-auto",
+									chatWidth === "narrow"
+										? "max-w-3xl"
+										: chatWidth === "wide"
+										? "max-w-5xl"
+										: "max-w-full px-4"
+								)}
+							>
 								<div className="text-center mb-8">
 									<div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 mb-4">
 										<Sparkles className="w-8 h-8 text-white" />
@@ -632,7 +739,16 @@ export default function ChatPage() {
 							</div>
 						) : (
 							// Messages
-							<div className="max-w-3xl mx-auto space-y-6">
+							<div
+								className={cn(
+									"mx-auto space-y-6",
+									chatWidth === "narrow"
+										? "max-w-3xl"
+										: chatWidth === "wide"
+										? "max-w-5xl"
+										: "max-w-full px-4"
+								)}
+							>
 								{isLoadingMessages ? (
 									<div className="flex items-center justify-center py-8">
 										<Loader2 className="w-8 h-8 animate-spin text-violet-500" />
@@ -963,7 +1079,16 @@ export default function ChatPage() {
 
 					{/* Input Area */}
 					<div className="border-t border-gray-800 bg-background/80 backdrop-blur-sm p-4">
-						<div className="max-w-3xl mx-auto">
+						<div
+							className={cn(
+								"mx-auto",
+								chatWidth === "narrow"
+									? "max-w-3xl"
+									: chatWidth === "wide"
+									? "max-w-5xl"
+									: "max-w-full px-4"
+							)}
+						>
 							{/* Model Selection */}
 							<div className="flex items-center justify-between mb-3">
 								<div className="flex items-center gap-2">
