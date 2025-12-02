@@ -103,7 +103,10 @@ export function Navbar() {
 								<Search className="w-4 h-4" />
 								<span className="hidden lg:inline">Search</span>
 								<kbd className="hidden lg:inline-block px-2 py-0.5 text-xs bg-white/10 border border-white/20 rounded">
-									{navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}
+									{typeof window !== "undefined" &&
+									navigator.platform.includes("Mac")
+										? "⌘K"
+										: "Ctrl+K"}
 								</kbd>
 							</button>
 

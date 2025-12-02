@@ -322,7 +322,9 @@ export default function PredictPage() {
 	// Copy question to clipboard
 	function copyQuestion(question: PredictedQuestion) {
 		const text = `Q. ${question.text}\n[${question.marks} marks - ${question.module}]`;
-		navigator.clipboard.writeText(text);
+		if (typeof window !== "undefined" && navigator.clipboard) {
+			navigator.clipboard.writeText(text);
+		}
 		setCopiedId(question.id);
 		setTimeout(() => setCopiedId(null), 2000);
 	}

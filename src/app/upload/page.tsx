@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useRef } from "react";
 import { Navbar, BottomNav, MobileHeader } from "@/components/layout";
 import { Button, Card } from "@/components/ui";

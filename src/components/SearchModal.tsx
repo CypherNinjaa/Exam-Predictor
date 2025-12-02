@@ -181,7 +181,10 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
 									</p>
 									<div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-500">
 										<kbd className="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs">
-											{navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}
+											{typeof window !== "undefined" &&
+											navigator.platform.includes("Mac")
+												? "⌘"
+												: "Ctrl"}
 										</kbd>
 										<span>+</span>
 										<kbd className="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs">
